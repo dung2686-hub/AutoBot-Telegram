@@ -12,6 +12,14 @@ from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, 
 logger = logging.getLogger(__name__)
 
 
+async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
+    """Calculate sell price from markup settings."""
+    m = await db.get_markup(product_id, config.default_markup_percent)
+    if m["fixed_price"] > 0:
+        return m["fixed_price"]
+    return int(cost_price * (1 + m["markup_percent"] / 100))
+
+
 @error_handler
 @ensure_user
 async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,8 +48,7 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = p.get("walletPricing", 0)
         product_id = p.get("_id", "")
 
-        markup = await db.get_markup(product_id, config.default_markup_percent)
-        sell_price = int(price * (1 + markup / 100))
+        sell_price = await calc_sell_price(db, product_id, price)
 
         stats = p.get("stats", {})
         available = stats.get("available")
@@ -93,8 +100,7 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    markup = await db.get_markup(product_id, config.default_markup_percent)
-    sell_price = int(product.get("walletPricing", 0) * (1 + markup / 100))
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
 
     stats = product.get("stats", {})
     slot_info = ""
@@ -148,8 +154,7 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    markup = await db.get_markup(product_id, config.default_markup_percent)
-    sell_price = int(product.get("walletPricing", 0) * (1 + markup / 100))
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
     total = sell_price * quantity
     balance = db_user["balance"]
 
@@ -193,8 +198,7 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    markup = await db.get_markup(product_id, config.default_markup_percent)
-    sell_price = int(product.get("walletPricing", 0) * (1 + markup / 100))
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
     total = sell_price * quantity
 
     # Check balance

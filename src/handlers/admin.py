@@ -177,7 +177,7 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     canboso = context.bot_data["canboso"]
     products = await canboso.get_products()
     markups = await db.get_all_markups()
-    markup_map = {m["product_id"]: m["markup_percent"] for m in markups}
+    markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
     text += f"Default: {config.default_markup_percent}%\n\n"
@@ -185,13 +185,24 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for p in products:
         pid = p.get("_id", "")
         name = p.get("product_name", "")
-        price = p.get("walletPricing", 0)
-        current = markup_map.get(pid, config.default_markup_percent)
-        original = format_vnd(price)
-        sell = format_vnd(int(price * (1 + current / 100)))
-        text += f"• <b>{name}</b>\n  Gốc: {original} → Bán: {sell} ({current}%)\n  ID: <code>{pid}</code>\n\n"
+        cost = p.get("walletPricing", 0)
 
-    text += "\n📝 Để thay đổi, gửi:\n<code>product_id markup_percent</code>\nVD: <code>abc123 15</code>"
+        m = markup_map.get(pid, {})
+        fixed = m.get("fixed_price", 0)
+        pct = m.get("markup_percent", config.default_markup_percent)
+
+        if fixed and fixed > 0:
+            sell = format_vnd(fixed)
+            mode = f"Cố định"
+        else:
+            sell = format_vnd(int(cost * (1 + pct / 100)))
+            mode = f"{pct}%"
+
+        text += f"• <b>{name}</b>\n  Gốc: {format_vnd(cost)} → Bán: {sell} ({mode})\n  ID: <code>{pid}</code>\n\n"
+
+    text += "\n📝 Cách thay đổi:\n"
+    text += "• Markup %: <code>ID 20</code>\n"
+    text += "• Giá cố định: <code>ID =25000</code>\n"
 
     await query.edit_message_text(text, reply_markup=admin_keyboard(), parse_mode="HTML")
     return MARKUP_INPUT
@@ -207,20 +218,55 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         parts = update.message.text.strip().split()
         product_id = parts[0]
-        markup = int(parts[1])
+        value = parts[1]
     except (ValueError, IndexError):
-        await update.message.reply_text("❌ Format: <code>product_id markup_percent</code>", parse_mode="HTML")
+        await update.message.reply_text(
+            "❌ Format:\n• Markup %: <code>ID 20</code>\n• Giá cố định: <code>ID =25000</code>",
+            parse_mode="HTML",
+        )
         return MARKUP_INPUT
 
     product = canboso.find_product(product_id)
-    name = product.get("name", product_id) if product else product_id
+    name = product.get("product_name", product_id) if product else product_id
+    cost = product.get("walletPricing", 0) if product else 0
 
-    await db.set_markup(product_id, name, markup)
-    await update.message.reply_text(
-        f"✅ Markup for <b>{name}</b> set to {markup}%",
-        reply_markup=admin_keyboard(),
-        parse_mode="HTML",
-    )
+    if value.startswith("="):
+        # Fixed price mode
+        try:
+            fixed_price = int(value[1:])
+        except ValueError:
+            await update.message.reply_text("❌ Giá không hợp lệ. VD: <code>=25000</code>", parse_mode="HTML")
+            return MARKUP_INPUT
+
+        if cost > 0 and fixed_price <= cost:
+            await update.message.reply_text(
+                f"❌ Giá bán ({format_vnd(fixed_price)}) phải <b>cao hơn</b> giá gốc ({format_vnd(cost)})",
+                parse_mode="HTML",
+            )
+            return MARKUP_INPUT
+
+        await db.set_markup(product_id, name, 0, fixed_price)
+        await update.message.reply_text(
+            f"✅ <b>{name}</b>\nGiá cố định: {format_vnd(fixed_price)} (gốc: {format_vnd(cost)})",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+    else:
+        # Percentage mode
+        try:
+            markup = int(value)
+        except ValueError:
+            await update.message.reply_text("❌ Markup % không hợp lệ. VD: <code>20</code>", parse_mode="HTML")
+            return MARKUP_INPUT
+
+        await db.set_markup(product_id, name, markup, 0)
+        sell = format_vnd(int(cost * (1 + markup / 100))) if cost else "N/A"
+        await update.message.reply_text(
+            f"✅ <b>{name}</b>\nMarkup: {markup}% → Giá bán: {sell}",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+
     return ConversationHandler.END
 
 

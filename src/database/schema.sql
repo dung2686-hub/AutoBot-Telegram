@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS product_markups (
     product_id      TEXT UNIQUE NOT NULL,         -- Canboso product ID
     product_name    TEXT DEFAULT '',
     markup_percent  INTEGER DEFAULT 20,           -- Per-product markup
+    fixed_price     INTEGER DEFAULT 0,            -- Fixed sell price (0 = use markup %)
     is_active       INTEGER DEFAULT 1,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

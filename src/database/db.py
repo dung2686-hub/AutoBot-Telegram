@@ -25,8 +25,17 @@ class Database:
 
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         await self._conn.executescript(schema)
+        await self._migrate()
         await self._conn.commit()
         logger.info("Database initialized: %s", self.db_path)
+
+    async def _migrate(self):
+        """Run migrations for schema changes."""
+        try:
+            await self.conn.execute("ALTER TABLE product_markups ADD COLUMN fixed_price INTEGER DEFAULT 0")
+            logger.info("Migration: added fixed_price column")
+        except Exception:
+            pass  # Column already exists
 
     async def close(self):
         if self._conn:
@@ -201,21 +210,25 @@ class Database:
 
     # ── Product Markups ───────────────────────────────────
 
-    async def get_markup(self, product_id: str, default: int = 20) -> int:
+    async def get_markup(self, product_id: str, default: int = 20) -> dict:
+        """Returns {'markup_percent': int, 'fixed_price': int}."""
         row = await self._fetch_one(
-            "SELECT markup_percent FROM product_markups WHERE product_id = ? AND is_active = 1",
+            "SELECT markup_percent, fixed_price FROM product_markups WHERE product_id = ? AND is_active = 1",
             (product_id,),
         )
-        return row["markup_percent"] if row else default
+        if row:
+            return {"markup_percent": row["markup_percent"], "fixed_price": row["fixed_price"] or 0}
+        return {"markup_percent": default, "fixed_price": 0}
 
-    async def set_markup(self, product_id: str, product_name: str, markup_percent: int):
+    async def set_markup(self, product_id: str, product_name: str, markup_percent: int, fixed_price: int = 0):
         await self.conn.execute(
-            """INSERT INTO product_markups (product_id, product_name, markup_percent)
-            VALUES (?, ?, ?)
+            """INSERT INTO product_markups (product_id, product_name, markup_percent, fixed_price)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(product_id) DO UPDATE SET
                 product_name = excluded.product_name,
-                markup_percent = excluded.markup_percent""",
-            (product_id, product_name, markup_percent),
+                markup_percent = excluded.markup_percent,
+                fixed_price = excluded.fixed_price""",
+            (product_id, product_name, markup_percent, fixed_price),
         )
         await self.conn.commit()
 
