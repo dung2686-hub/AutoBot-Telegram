@@ -82,19 +82,24 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(t("deposit_invalid_amount", lang), parse_mode="HTML")
         return ENTER_AMOUNT
 
-    # Generate payment code
-    code = _generate_payment_code(db_user["telegram_id"])
+    from src.services.vietqr import generate_vietqr
+    import time
 
-    # Save pending deposit
-    await db.create_deposit(
+    # Save pending deposit first to get ID (use temp unique code)
+    temp_code = f"PENDING_{int(time.time() * 1000)}"
+    deposit = await db.create_deposit(
         user_id=db_user["id"],
         amount=amount,
-        code=code,
+        code=temp_code,
         expire_minutes=config.deposit_expire_minutes,
     )
+    deposit_id = deposit["id"]
+    code = f"NAP {deposit_id}"
+    
+    # Update the deposit code with the actual NAP + ID
+    await db.conn.execute("UPDATE deposits SET code = ? WHERE id = ?", (code, deposit_id))
+    await db.conn.commit()
 
-    # Generate QR
-    from src.services.vietqr import generate_vietqr
     qr_bytes = await generate_vietqr(amount, code)
 
     # Map bank_bin to display name

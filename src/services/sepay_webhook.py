@@ -60,14 +60,12 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     code_id = match.group(2)
     
     if prefix == "NAP":
-        # Find pending deposit
-        code_str = f"NAP_{code_id}" 
-        deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE code = ? AND status != 'completed'", (code_str,))
-        if not deposit_row:
-            deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE code = ? AND status != 'completed'", (f"NAP{code_id}",))
+        # Find pending deposit by ID
+        deposit_id = int(code_id)
+        deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE id = ? AND status != 'completed'", (deposit_id,))
             
         if not deposit_row:
-            logger.warning("SePay webhook: no valid deposit found for %s", code_str)
+            logger.warning("SePay webhook: no valid deposit found for NAP %d", deposit_id)
             return web.json_response({"success": True})
 
         deposit = dict(deposit_row)
@@ -82,7 +80,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         
         await _db.add_transaction(
             user_id=deposit["user_id"], tx_type="deposit", amount=amount,
-            balance_after=new_balance, description=f"Nạp tiền ({code_str})", reference_id=str(deposit["id"])
+            balance_after=new_balance, description=f"Nạp tiền (NAP {deposit_id})", reference_id=str(deposit["id"])
         )
 
         if _bot_app:
@@ -97,7 +95,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
             except Exception as e:
                 logger.error("Failed to notify user %d: %s", telegram_id, e)
-        logger.info("Deposit completed: %s", code_str)
+        logger.info("Deposit completed: NAP %d", deposit_id)
 
     elif prefix == "MUA":
         order_id = int(code_id)

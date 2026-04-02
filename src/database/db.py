@@ -185,12 +185,13 @@ class Database:
 
     async def create_deposit(self, user_id: int, amount: int, code: str, expire_minutes: int = 30) -> dict:
         expires_at = datetime.now() + timedelta(minutes=expire_minutes)
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             "INSERT INTO deposits (user_id, amount, code, expires_at) VALUES (?, ?, ?, ?)",
             (user_id, amount, code, expires_at.isoformat()),
         )
         await self.conn.commit()
-        row = await self._fetch_one("SELECT * FROM deposits WHERE code = ?", (code,))
+        deposit_id = cursor.lastrowid
+        row = await self._fetch_one("SELECT * FROM deposits WHERE id = ?", (deposit_id,))
         return dict(row)
 
     async def find_pending_deposit(self, code: str) -> Optional[dict]:
