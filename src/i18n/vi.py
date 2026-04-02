@@ -74,10 +74,11 @@ VI = {
     "deposit_enter_amount": "💳 <b>Nạp tiền</b>\n\nVui lòng nhập số tiền muốn nạp (VNĐ):\n\n<i>Ví dụ: 50000, 100000, 200000</i>",
     "deposit_invalid_amount": "❌ Số tiền không hợp lệ. Vui lòng nhập số nguyên (tối thiểu 10,000đ).",
     "deposit_qr": (
-        "💳 <b>Nạp tiền</b>\n\n"
+        "🏦 <b>Chuyển khoản tới {bank_name} - {bank_account}</b>\n"
+        "👤 Chủ TK: <b>{bank_account_name}</b>\n\n"
         "💰 Số tiền: <b>{amount}</b>\n"
         "📝 Nội dung CK: <code>{code}</code>\n"
-        "⏰ Hết hạn sau: {expire_min} phút\n\n"
+        "⏰ Thời gian còn lại: <b>{expire_min} phút</b>\n\n"
         "📱 Quét mã QR bên dưới để chuyển khoản.\n"
         "⚠️ <b>Lưu ý:</b> Nhập đúng nội dung chuyển khoản!"
     ),

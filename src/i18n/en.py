@@ -74,10 +74,11 @@ EN = {
     "deposit_enter_amount": "💳 <b>Deposit</b>\n\nPlease enter the amount (VND):\n\n<i>Example: 50000, 100000, 200000</i>",
     "deposit_invalid_amount": "❌ Invalid amount. Please enter a number (minimum 10,000đ).",
     "deposit_qr": (
-        "💳 <b>Deposit</b>\n\n"
+        "🏦 <b>Transfer to {bank_name} - {bank_account}</b>\n"
+        "👤 Account holder: <b>{bank_account_name}</b>\n\n"
         "💰 Amount: <b>{amount}</b>\n"
         "📝 Transfer note: <code>{code}</code>\n"
-        "⏰ Expires in: {expire_min} minutes\n\n"
+        "⏰ Time remaining: <b>{expire_min} minutes</b>\n\n"
         "📱 Scan the QR code below to transfer.\n"
         "⚠️ <b>Note:</b> Enter the exact transfer note!"
     ),

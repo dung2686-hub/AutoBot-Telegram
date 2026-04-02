@@ -97,11 +97,21 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
     from src.services.vietqr import generate_vietqr
     qr_bytes = await generate_vietqr(amount, code)
 
-    # Send QR image + info
+    # Map bank_bin to display name
+    bank_names = {
+        "mbb": "MBBank", "tcb": "Techcombank", "vcb": "Vietcombank",
+        "acb": "ACB", "tpb": "TPBank", "bidv": "BIDV",
+        "vtb": "VietinBank", "vpb": "VPBank", "scb": "Sacombank",
+    }
+    bank_display = bank_names.get(config.bank_bin.lower(), config.bank_bin.upper())
+
     text = t("deposit_qr", lang,
         amount=format_vnd(amount),
         code=code,
         expire_min=config.deposit_expire_minutes,
+        bank_name=bank_display,
+        bank_account=config.bank_account,
+        bank_account_name=config.bank_account_name,
     )
 
     if qr_bytes:

@@ -232,12 +232,21 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     qr_url = f"https://img.vietqr.io/image/{bin_code}-{acc_no}-compact2.png?amount={total}&addInfo={quote(order_code_mem)}&accountName={quote(acc_name)}"
 
+    bank_names = {
+        "mbb": "MBBank", "tcb": "Techcombank", "vcb": "Vietcombank",
+        "acb": "ACB", "tpb": "TPBank", "bidv": "BIDV",
+        "vtb": "VietinBank", "vpb": "VPBank", "scb": "Sacombank",
+    }
+    bank_display = bank_names.get(bin_code.lower(), bin_code.upper())
+
     msg_text = (
-        f"💳 Chuyển khoản tới {acc_name} - {acc_no} theo hướng dẫn dưới đây:\n\n"
+        f"🏦 <b>Chuyển khoản tới {bank_display} - {acc_no}</b>\n"
+        f"👤 Chủ TK: <b>{acc_name}</b>\n\n"
         f"💰 Số tiền: <b>{format_vnd(total)}</b>\n"
-        f"📌 Mã đơn hàng (ghi chú): <code>{order_code_mem}</code>\n"
-        f"⏳ Thời gian còn lại: 5 phút.\n\n"
-        f"✅ Sau khi chuyển thành công, bot sẽ tự động xác nhận và gửi tài khoản."
+        f"📝 Nội dung CK: <code>{order_code_mem}</code>\n"
+        f"⏰ Thời gian còn lại: <b>5 phút</b>\n\n"
+        f"📱 Quét mã QR bên dưới để chuyển khoản.\n"
+        f"⚠️ <b>Lưu ý:</b> Nhập đúng nội dung chuyển khoản!"
     )
 
     await query.message.delete()
