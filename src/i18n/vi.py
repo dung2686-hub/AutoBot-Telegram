@@ -119,7 +119,7 @@ VI = {
         "💬 <b>Hỗ trợ</b>\n\n"
         "Bạn cần hỗ trợ? Hãy gửi tin nhắn mô tả vấn đề của bạn ngay tại đây.\n"
         "Đội ngũ hỗ trợ sẽ nhận được thông báo và phản hồi sớm nhất có thể.\n\n"
-        "Hoặc liên hệ trực tiếp Admin: @dung2686"
+        "Hoặc liên hệ trực tiếp Admin: @dunghanhshop"
     ),
     "support_sent": "✅ Tin nhắn đã được gửi tới đội ngũ hỗ trợ.\nChúng tôi sẽ phản hồi sớm nhất!",
     "support_admin_notify": "📩 <b>Tin nhắn hỗ trợ</b>\n\nTừ: {user} (@{username})\nID: <code>{user_id}</code>\n\n{message}",
