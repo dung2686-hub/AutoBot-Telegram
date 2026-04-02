@@ -18,7 +18,7 @@ class Config:
     # SePay
     sepay_secret_key: str = field(default_factory=lambda: os.getenv("SEPAY_SECRET_KEY", ""))
     webhook_host: str = field(default_factory=lambda: os.getenv("WEBHOOK_HOST", "0.0.0.0"))
-    webhook_port: int = field(default_factory=lambda: int(os.getenv("WEBHOOK_PORT", "8443")))
+    webhook_port: int = field(default_factory=lambda: int(os.getenv("PORT", os.getenv("WEBHOOK_PORT", "8443"))))
 
     # VietQR
     vietqr_client_id: str = field(default_factory=lambda: os.getenv("VIETQR_CLIENT_ID", ""))
