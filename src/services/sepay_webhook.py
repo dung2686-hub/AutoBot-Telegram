@@ -21,9 +21,12 @@ def set_dependencies(bot_app, db):
 async def handle_sepay_webhook(request: web.Request) -> web.Response:
     """Handle incoming SePay webhook for bank transfer verification."""
 
-    # Verify secret key
+    # Verify secret key — MANDATORY, reject if key not configured or mismatch
     secret = request.headers.get("Authorization", "") or request.headers.get("X-Secret-Key", "")
-    if config.sepay_secret_key and secret != config.sepay_secret_key:
+    if not config.sepay_secret_key:
+        logger.error("SePay webhook: SEPAY_SECRET_KEY not configured! Rejecting all requests.")
+        return web.json_response({"success": False, "error": "Webhook key not configured"}, status=500)
+    if secret != config.sepay_secret_key:
         logger.warning("SePay webhook: invalid secret key")
         return web.json_response({"success": False}, status=401)
 
@@ -164,7 +167,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
 
             if not result.get("success"):
                 # Refund to wallet
-                logger.warning("Canboso purchase failed for MUA %d. Refunding %d", order_id, order["total_amount"])
+                error_msg = result.get("message", "Unknown error")
+                logger.warning("Canboso purchase failed for MUA %d. Refunding %d. Reason: %s", order_id, order["total_amount"], error_msg)
                 new_balance = await _db.update_balance(telegram_id, order["total_amount"])
                 await _db.update_order(order_id, status="failed")
                 await _db.add_transaction(
@@ -172,11 +176,26 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     balance_after=new_balance, description=f"Hoàn tiền (Lỗi mua {order_id})", reference_id=str(order_id)
                 )
                 if _bot_app and telegram_id:
-                    error_msg = result.get("message", "Unknown error")
                     msg = (f"❌ <b>Giao dịch thành công nhưng kho hết hạn!</b>\n\n"
                            f"Bot không thể mua tự động từ nguồn với lỗi: {error_msg}.\n"
                            f"Số tiền <b>{format_vnd(order['total_amount'])}</b> đã được hoàn trả vào số dư ví của Quý khách.")
                     await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+
+                # === PATCH C: ALERT ADMIN ===
+                if _bot_app and config.admin_chat_id:
+                    admin_msg = (
+                        f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
+                        f"Đơn: MUA {order_id}\n"
+                        f"Sản phẩm: {order['product_name']}\n"
+                        f"SL: {order['quantity']}\n"
+                        f"Lỗi: <code>{error_msg}</code>\n\n"
+                        f"Đã hoàn {format_vnd(order['total_amount'])} vào ví khách.\n"
+                        f"⚠️ Kiểm tra số dư Canboso ngay!"
+                    )
+                    try:
+                        await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                    except Exception as admin_err:
+                        logger.error("Failed to alert admin: %s", admin_err)
             else:
                 delivered = result.get("deliveredAccounts", [])
                 await _db.update_order(
