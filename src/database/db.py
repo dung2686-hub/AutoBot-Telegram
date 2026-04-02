@@ -80,6 +80,26 @@ class Database:
         )
         await self.conn.commit()
 
+    async def set_referral(self, telegram_id: int, referrer_id: int) -> bool:
+        """Sets referred_by if it's null and not self. Returns True if successfully set."""
+        if telegram_id == referrer_id:
+            return False
+            
+        user = await self.get_user(telegram_id)
+        if not user or user.get("referred_by"):
+            return False
+            
+        referrer = await self.get_user(referrer_id)
+        if not referrer:
+            return False
+            
+        await self.conn.execute(
+            "UPDATE users SET referred_by = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ? AND referred_by IS NULL",
+            (referrer["id"], telegram_id),
+        )
+        await self.conn.commit()
+        return True
+
     async def update_balance(self, telegram_id: int, amount: int) -> int:
         """Add amount to balance (negative to deduct). Returns new balance."""
         await self.conn.execute(
@@ -97,6 +117,61 @@ class Database:
     async def count_users(self) -> int:
         row = await self._fetch_one("SELECT COUNT(*) as cnt FROM users")
         return row["cnt"] if row else 0
+
+    async def check_and_pay_referral_bonus(self, user_id: int, order_amount: int) -> int:
+        """
+        Check if this is the first completed order for the user.
+        If yes, and they have a referrer, pay 10% bonus to the referrer.
+        Returns the amount of bonus paid (0 if none).
+        """
+        # Check if user has referred_by
+        user = await self._fetch_one("SELECT id, telegram_id, referred_by FROM users WHERE id = ?", (user_id,))
+        if not user or not user["referred_by"]:
+            return 0
+            
+        # Check if this user already has any completed orders
+        # If count > 1, it means this is not their first completed order (assuming we call this after marking the current order as completed, or if we call it before, count > 0)
+        # Let's say we call it AFTER the current order is marked completed. So count should be exactly 1.
+        # But wait, CANBOSO purchase might not mark it completed immediately in our db if we don't manage it right, but actually we do.
+        # Let's just check how many completed orders they have.
+        count_row = await self._fetch_one("SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND status = 'completed'", (user_id,))
+        count = count_row["cnt"] if count_row else 0
+        
+        # If count == 1 (this is their very first completed order) or count == 0 (if called before marking)
+        # Actually calling it exactly once is better. Let's just use a special transaction type "referral_bonus" to check if we already paid.
+        paid_row = await self._fetch_one("SELECT COUNT(*) as cnt FROM transactions WHERE user_id = ? AND type = 'referral_bonus' AND description LIKE '%từ user {}%'".format(user_id), (user["referred_by"],))
+        # Wait, the bonus goes to the referrer!
+        # So user_id = referrer, description contains the new user's id.
+        referrer_id = user["referred_by"]
+        
+        # Check if referrer already received bonus for this user
+        check_bonus = await self._fetch_one(
+            "SELECT id FROM transactions WHERE user_id = ? AND type = 'referral_bonus' AND reference_id = ?",
+            (referrer_id, str(user_id))
+        )
+        if check_bonus:
+            return 0 # Already paid bonus for this user
+            
+        # Calculate 10% bonus
+        bonus_amount = int(order_amount * 0.1)
+        if bonus_amount <= 0:
+            return 0
+            
+        referrer = await self._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (referrer_id,))
+        if not referrer:
+            return 0
+            
+        # Add bonus to referrer
+        new_balance = await self.update_balance(referrer["telegram_id"], bonus_amount)
+        await self.add_transaction(
+            user_id=referrer_id, 
+            tx_type="referral_bonus", 
+            amount=bonus_amount,
+            balance_after=new_balance, 
+            description=f"Hoa hồng 10% (từ user {user_id})", 
+            reference_id=str(user_id)
+        )
+        return bonus_amount
 
     # ── Deposits ──────────────────────────────────────────
 

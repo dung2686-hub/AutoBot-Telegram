@@ -2,17 +2,20 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from src.i18n import t
 
 
-def main_menu_keyboard(lang: str = "vi") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("btn_shop", lang), callback_data="menu:shop")],
+def main_menu_keyboard(lang: str = "vi", admin: bool = False) -> InlineKeyboardMarkup:
+    """Creates the main menu keyboard."""
+    
+    # Matching Bot B style
+    k = [
+        [InlineKeyboardButton("🛍️ Mua hàng", callback_data="menu:shop")],
         [
-            InlineKeyboardButton(t("btn_profile", lang), callback_data="menu:profile"),
-            InlineKeyboardButton(t("btn_history", lang), callback_data="menu:history"),
+            InlineKeyboardButton("👤 Hồ sơ", callback_data="menu:profile"),
+            InlineKeyboardButton("🕒 Lịch sử mua", callback_data="menu:history"),
         ],
-        [InlineKeyboardButton(t("btn_wallet", lang), callback_data="menu:wallet")],
-        [InlineKeyboardButton(t("btn_support", lang), callback_data="menu:support")],
-        [InlineKeyboardButton(t("btn_language", lang), callback_data="menu:language")],
-    ])
+        [InlineKeyboardButton("💳 Ví", callback_data="menu:wallet")],
+        [InlineKeyboardButton("🎧 Hỗ trợ / Support", callback_data="menu:support")],
+    ]
+    return InlineKeyboardMarkup(k)
 
 
 def back_to_menu_keyboard(lang: str = "vi") -> InlineKeyboardMarkup:

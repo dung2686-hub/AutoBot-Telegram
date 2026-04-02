@@ -182,6 +182,16 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 await _db.update_order(
                     order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
                 )
+                # Check and pay referral bonus
+                bonus = await _db.check_and_pay_referral_bonus(order["user_id"], order["total_amount"])
+                if bonus > 0 and _bot_app:
+                    referrer = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
+                    if referrer and referrer["telegram_id"]:
+                        try:
+                            msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{format_vnd(bonus)}</b> vào ví."
+                            await _bot_app.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
+                        except Exception:
+                            pass
                 if _bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,

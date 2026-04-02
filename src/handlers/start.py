@@ -16,13 +16,62 @@ BOT_NAME = "AI Store Bot"
 @error_handler
 @ensure_user
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command — show welcome + main menu."""
-    lang = context.user_data.get("lang", "vi")
+    """Handle /start command — show welcome + main menu in 4 blocks."""
+    bot = context.bot
+    telegram_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    db = context.bot_data["db"]
 
-    text = t("welcome", lang, bot_name=BOT_NAME)
-    keyboard = main_menu_keyboard(lang)
+    # 1. Handle deep linking for referral
+    args = context.args
+    if args and len(args) > 0:
+        arg = args[0]
+        if arg.startswith("ref_"):
+            try:
+                referrer_id = int(arg.split("_")[1])
+                # Save referral
+                await db.set_referral(telegram_id, referrer_id)
+            except ValueError:
+                pass
 
-    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    bot_username = (await bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start=ref_{telegram_id}"
+
+    # Block 1: Welcome & Referral Program
+    msg1 = (
+        f"👋 Xin chào {first_name} đã đến với bot của @{bot_username}!\n\n"
+        f"🎁 Chương trình giới thiệu bạn bè\n\n"
+        f"• Chia sẻ link bot kèm mã giới thiệu của bạn.\n"
+        f"• Khi người được mời phát sinh đơn hàng đầu tiên, bạn nhận 10% giá trị đơn vào ví.\n"
+        f"• Mỗi người mới chỉ được tính thưởng 1 lần.\n"
+        f"• Không áp dụng cho tự giới thiệu.\n\n"
+        f"🔗 Link giới thiệu của bạn:\n{ref_link}"
+    )
+
+    # Block 2: Promo
+    msg2 = (
+        f"🎁 Khuyến mãi:\n"
+        f"🛍️ Mua số lượng nhiều sẽ tự động có chiết khấu theo chính sách hiện hành!"
+    )
+
+    # Block 3 & 4: Guide and Menu
+    msg3 = (
+        f"📌 Hướng dẫn nhanh:\n"
+        f"1. Nhấn nút \"🛍️ Mua hàng\".\n"
+        f"2. Chọn sản phẩm bạn muốn mua.\n"
+        f"3. Chọn thanh toán bằng QR và quét mã để thanh toán.\n"
+        f"4. Sau khi thanh toán xong, bot sẽ tự động xử lý đơn hàng."
+    )
+    
+    msg4 = f"📌 Vui lòng chọn menu:"
+    
+    keyboard = main_menu_keyboard(lang="vi")
+
+    # Send blocks sequentially
+    await update.message.reply_text(msg1, disable_web_page_preview=True)
+    await update.message.reply_text(msg2)
+    await update.message.reply_text(msg3)
+    await update.message.reply_text(msg4, reply_markup=keyboard)
 
 
 @error_handler
@@ -32,8 +81,11 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
 
-    lang = context.user_data.get("lang", "vi")
-    text = t("welcome", lang, bot_name=BOT_NAME)
-    keyboard = main_menu_keyboard(lang)
+    text = f"📌 Vui lòng chọn menu:"
+    keyboard = main_menu_keyboard(lang="vi")
 
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        # If text is exactly the same, Telegram raises BadRequest
+        pass

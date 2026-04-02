@@ -348,6 +348,18 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         description=f"Mua {product.get('product_name', '')} x{quantity}",
     )
 
+    # Check and pay referral bonus
+    bonus = await db.check_and_pay_referral_bonus(user["id"], total)
+    if bonus > 0:
+        referrer = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
+        if referrer and referrer["telegram_id"]:
+            try:
+                from src.utils.formatters import format_vnd
+                msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{format_vnd(bonus)}</b> vào ví."
+                await context.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
+            except Exception:
+                pass
+
     # Format accounts
     from src.utils.formatters import format_account_list
     accounts_text = format_account_list(delivered, lang)
