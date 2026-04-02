@@ -89,3 +89,43 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception:
         # If text is exactly the same, Telegram raises BadRequest
         pass
+
+@error_handler
+@ensure_user
+async def language_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # We can fetch the current user's lang, but let's just show options
+    from src.utils.keyboards import language_keyboard
+    text = "🌐 Vui lòng chọn ngôn ngữ / Please select your language:"
+    await query.edit_message_text(text, reply_markup=language_keyboard(), parse_mode="HTML")
+
+@error_handler
+@ensure_user
+async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    db = context.bot_data["db"]
+    telegram_id = update.effective_user.id
+    
+    # extract lang from data (e.g., lang:vi)
+    lang = query.data.split(":")[1]
+    await db.set_user_language(telegram_id, lang)
+    
+    # After setting language, reload main menu
+    from src.utils.keyboards import main_menu_keyboard
+    text = f"✅ Ngôn ngữ đã được thay đổi / Language has been changed.\n\n📌 Vui lòng chọn menu:"
+    keyboard = main_menu_keyboard(lang=lang)
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        pass
+
+@error_handler
+@ensure_user
+async def api_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer(text="Tính năng Liên kết API đang được phát triển! Sắp ra mắt.", show_alert=True)
+

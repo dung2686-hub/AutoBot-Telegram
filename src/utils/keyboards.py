@@ -14,8 +14,19 @@ def main_menu_keyboard(lang: str = "vi", admin: bool = False) -> InlineKeyboardM
         ],
         [InlineKeyboardButton("💳 Ví", callback_data="menu:wallet")],
         [InlineKeyboardButton("🎧 Hỗ trợ / Support", callback_data="menu:support")],
+        [
+            InlineKeyboardButton("🔗 Liên kết API", callback_data="menu:api"),
+            InlineKeyboardButton("🌐 Ngôn ngữ", callback_data="menu:language")
+        ],
     ]
     return InlineKeyboardMarkup(k)
+
+def language_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇻🇳 Tiếng Việt", callback_data="lang:vi")],
+        [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
+        [InlineKeyboardButton("🔙 Quay lại / Back", callback_data="menu:main")],
+    ])
 
 
 def back_to_menu_keyboard(lang: str = "vi") -> InlineKeyboardMarkup:

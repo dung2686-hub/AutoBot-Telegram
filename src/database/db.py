@@ -100,6 +100,14 @@ class Database:
         await self.conn.commit()
         return True
 
+    async def set_user_language(self, telegram_id: int, lang: str):
+        """Update user language."""
+        await self.conn.execute(
+            "UPDATE users SET language = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
+            (lang, telegram_id)
+        )
+        await self.conn.commit()
+
     async def update_balance(self, telegram_id: int, amount: int) -> int:
         """Add amount to balance (negative to deduct). Returns new balance."""
         await self.conn.execute(

@@ -107,7 +107,11 @@ def build_application() -> Application:
 
     # ── Callback Query Handlers ───────────────────────────
     # Main menu
+    from src.handlers.start import language_menu_callback, set_language_callback, api_menu_callback
     app.add_handler(CallbackQueryHandler(main_menu_callback, pattern=r"^menu:main$"))
+    app.add_handler(CallbackQueryHandler(language_menu_callback, pattern=r"^menu:language$"))
+    app.add_handler(CallbackQueryHandler(api_menu_callback, pattern=r"^menu:api$"))
+    app.add_handler(CallbackQueryHandler(set_language_callback, pattern=r"^lang:(.*)$"))
 
     # Shop
     app.add_handler(CallbackQueryHandler(shop_menu, pattern=r"^menu:shop$"))
