@@ -215,11 +215,25 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
 
-    try:
-        parts = update.message.text.strip().split()
-        product_id = parts[0]
-        value = parts[1]
-    except (ValueError, IndexError):
+    raw = update.message.text.strip().replace(",", "").replace(".", "")
+
+    # Try to extract product_id and value from various formats
+    # Format: "ID =25000", "ID=25000", "ID = 25000", "ID 20"
+    product_id = None
+    value = None
+
+    if "=" in raw:
+        # Fixed price: split on =
+        idx = raw.index("=")
+        product_id = raw[:idx].strip()
+        value = "=" + raw[idx+1:].strip()
+    else:
+        parts = raw.split()
+        if len(parts) >= 2:
+            product_id = parts[0]
+            value = parts[1]
+
+    if not product_id or not value:
         await update.message.reply_text(
             "❌ Format:\n• Markup %: <code>ID 20</code>\n• Giá cố định: <code>ID =25000</code>",
             parse_mode="HTML",
