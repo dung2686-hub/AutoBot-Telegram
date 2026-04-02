@@ -38,6 +38,14 @@ def confirm_cancel_keyboard(confirm_data: str, lang: str = "vi") -> InlineKeyboa
     ])
 
 
+def payment_options_keyboard(product_id: str, quantity: int, lang: str = "vi") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 Thanh toán qua ví", callback_data=f"shop:execute:{product_id}:{quantity}")],
+        [InlineKeyboardButton("💳 Thanh toán ngay", callback_data=f"shop:qr_pay:{product_id}:{quantity}")],
+        [InlineKeyboardButton(t("btn_cancel", lang), callback_data="menu:main")],
+    ])
+
+
 def product_detail_keyboard(product_id: str, quantity: int, lang: str = "vi") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [

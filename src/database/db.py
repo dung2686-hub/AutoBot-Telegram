@@ -141,18 +141,20 @@ class Database:
     # ── Orders ────────────────────────────────────────────
 
     async def create_order(
-        self, user_id: int, order_code: str, product_id: str,
+        self, user_id: int, product_id: str,
         product_name: str, quantity: int, original_price: int,
-        sell_price: int, delivered_data: list,
+        sell_price: int, order_code: str = "", delivered_data: list = None,
+        status: str = "completed"
     ) -> dict:
+        delivered_data = delivered_data or []
         total = sell_price * quantity
         await self.conn.execute(
             """INSERT INTO orders
             (user_id, order_code, product_id, product_name, quantity,
-             original_price, sell_price, total_amount, delivered_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             original_price, sell_price, total_amount, delivered_data, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, order_code, product_id, product_name, quantity,
-             original_price, sell_price, total, json.dumps(delivered_data)),
+             original_price, sell_price, total, json.dumps(delivered_data), status),
         )
         await self.conn.commit()
         row = await self._fetch_one(
@@ -160,6 +162,23 @@ class Database:
             (user_id,),
         )
         return dict(row)
+
+    async def get_order(self, order_id: int) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM orders WHERE id = ?", (order_id,))
+        return dict(row) if row else None
+
+    async def update_order(self, order_id: int, status: str, order_code: str = "", delivered_data: list = None):
+        if delivered_data is not None:
+            await self.conn.execute(
+                "UPDATE orders SET status = ?, order_code = ?, delivered_data = ? WHERE id = ?",
+                (status, order_code, json.dumps(delivered_data), order_id)
+            )
+        else:
+            await self.conn.execute(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                (status, order_id)
+            )
+        await self.conn.commit()
 
     async def get_user_orders(self, user_id: int, limit: int = 10, offset: int = 0) -> list[dict]:
         rows = await self._fetch_all(

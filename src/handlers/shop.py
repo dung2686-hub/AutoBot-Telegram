@@ -165,10 +165,89 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance=format_vnd(balance),
     )
 
-    keyboard = confirm_cancel_keyboard(
-        f"shop:execute:{product_id}:{quantity}", lang
-    )
+    from src.utils.keyboards import payment_options_keyboard
+    keyboard = payment_options_keyboard(product_id, quantity, lang)
+    
+    # Prompt the user to select a payment method
+    text += "\n\n<b>Vui lòng chọn phương thức thanh toán:</b>"
+    
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+@error_handler
+@ensure_user
+async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate QR and Pending Order for Direct Pay."""
+    query = update.callback_query
+    await query.answer()
+
+    lang = context.user_data.get("lang", "vi")
+    db = context.bot_data["db"]
+    canboso = context.bot_data["canboso"]
+    telegram_id = update.effective_user.id
+    db_user = context.user_data["db_user"]
+
+    parts = query.data.split(":")
+    product_id = parts[2]
+    quantity = int(parts[3]) if len(parts) > 3 else 1
+
+    product = canboso.find_product(product_id)
+    if not product:
+        await query.edit_message_text(
+            t("product_out_of_stock", lang),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
+    total = sell_price * quantity
+
+    # Create a pending order
+    order = await db.create_order(
+        user_id=db_user["id"],
+        product_id=product_id,
+        product_name=product.get("product_name", ""),
+        quantity=quantity,
+        original_price=product.get("walletPricing", 0),
+        sell_price=sell_price,
+        order_code="",  # Canboso order code, to be filled later
+        delivered_data=[],
+        status="pending"
+    )
+    
+    order_id = order["id"]
+    order_code_mem = f"MUA {order_id}"
+
+    # Generate VietQR URL
+    from src.config import config
+    from urllib.parse import quote
+    
+    bin_code = config.bank_bin
+    acc_no = config.bank_account
+    acc_name = config.bank_account_name
+    
+    if not bin_code or not acc_no:
+        await query.edit_message_text("Admin chưa cấu hình thanh toán QR. Vui lòng nạp ví.", show_alert=True)
+        return
+
+    qr_url = f"https://img.vietqr.io/image/{bin_code}-{acc_no}-compact2.png?amount={total}&addInfo={quote(order_code_mem)}&accountName={quote(acc_name)}"
+
+    msg_text = (
+        f"💳 <b>THANH TOÁN ĐƠN HÀNG #{order_id}</b>\n\n"
+        f"📦 Sản phẩm: {product.get('product_name', '')} x{quantity}\n"
+        f"💵 Tổng tiền: <b>{format_vnd(total)}</b>\n\n"
+        f"Nhập đúng nội dung CK: <code>{order_code_mem}</code>\n"
+        f"(Hệ thống sẽ tự động giao thẻ trong vòng 1-2 phút sau khi chuyển thành công)"
+    )
+
+    await query.message.delete()
+    await context.bot.send_photo(
+        chat_id=telegram_id,
+        photo=qr_url,
+        caption=msg_text,
+        parse_mode="HTML",
+        reply_markup=back_to_menu_keyboard(lang)
+    )
 
 
 @error_handler
