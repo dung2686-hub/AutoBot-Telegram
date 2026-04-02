@@ -292,6 +292,19 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # --- PROTECT AGAINST PRICE SLIPPAGE ---
+    await canboso.refresh_cache()
+    product = canboso.find_product(product_id)
+    current_cost = product.get("walletPricing", 0) if product else float('inf')
+    
+    if not product or current_cost >= sell_price:
+        await query.edit_message_text(
+            "❌ <b>Sản phẩm tạm thời đổi giá hoặc ngừng bán từ hệ thống tổng. Giao dịch đã bị hủy để bảo vệ số dư của bạn!</b>",
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
     # Call Canboso API
     result = await canboso.purchase(
         product_id=product_id,
