@@ -183,14 +183,15 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"Default: {config.default_markup_percent}%\n\n"
 
     for p in products:
-        pid = p.get("productId", "")
-        name = p.get("name", "")
+        pid = p.get("_id", "")
+        name = p.get("product_name", "")
+        price = p.get("walletPricing", 0)
         current = markup_map.get(pid, config.default_markup_percent)
-        original = format_vnd(p.get("price", 0))
-        sell = format_vnd(int(p.get("price", 0) * (1 + current / 100)))
-        text += f"• <b>{name}</b>\n  Gốc: {original} → Bán: {sell} ({current}%)\n\n"
+        original = format_vnd(price)
+        sell = format_vnd(int(price * (1 + current / 100)))
+        text += f"• <b>{name}</b>\n  Gốc: {original} → Bán: {sell} ({current}%)\n  ID: <code>{pid}</code>\n\n"
 
-    text += "\n📝 Để thay đổi, gửi:\n<code>product_id markup_percent</code>"
+    text += "\n📝 Để thay đổi, gửi:\n<code>product_id markup_percent</code>\nVD: <code>abc123 15</code>"
 
     await query.edit_message_text(text, reply_markup=admin_keyboard(), parse_mode="HTML")
     return MARKUP_INPUT
