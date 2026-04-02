@@ -233,11 +233,11 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     qr_url = f"https://img.vietqr.io/image/{bin_code}-{acc_no}-compact2.png?amount={total}&addInfo={quote(order_code_mem)}&accountName={quote(acc_name)}"
 
     msg_text = (
-        f"💳 <b>THANH TOÁN ĐƠN HÀNG #{order_id}</b>\n\n"
-        f"📦 Sản phẩm: {product.get('product_name', '')} x{quantity}\n"
-        f"💵 Tổng tiền: <b>{format_vnd(total)}</b>\n\n"
-        f"Nhập đúng nội dung CK: <code>{order_code_mem}</code>\n"
-        f"(Hệ thống sẽ tự động giao thẻ trong vòng 1-2 phút sau khi chuyển thành công)"
+        f"💳 Chuyển khoản tới {acc_name} - {acc_no} theo hướng dẫn dưới đây:\n\n"
+        f"💰 Số tiền: <b>{format_vnd(total)}</b>\n"
+        f"📌 Mã đơn hàng (ghi chú): <code>{order_code_mem}</code>\n"
+        f"⏳ Thời gian còn lại: 5 phút.\n\n"
+        f"✅ Sau khi chuyển thành công, bot sẽ tự động xác nhận và gửi tài khoản."
     )
 
     await query.message.delete()
