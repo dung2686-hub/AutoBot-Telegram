@@ -60,9 +60,12 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     code_id = match.group(2)
     
     if prefix == "NAP":
-        # Find pending deposit by ID
+        # Find pending deposit by ID (accept 'expired' within grace period for race condition)
         deposit_id = int(code_id)
-        deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE id = ? AND status != 'completed'", (deposit_id,))
+        deposit_row = await _db._fetch_one(
+            "SELECT * FROM deposits WHERE id = ? AND status IN ('pending', 'expired')",
+            (deposit_id,)
+        )
             
         if not deposit_row:
             logger.warning("SePay webhook: no valid deposit found for NAP %d", deposit_id)
@@ -110,8 +113,11 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         
         from src.utils.formatters import format_vnd
         
-        # LATE PAYMENT OR PARTIAL PAYMENT FALLBACK
-        if order["status"] != "pending" or amount < order["total_amount"]:
+        # LATE PAYMENT, PARTIAL PAYMENT, or EXPIRED ORDER FALLBACK
+        is_expired = order["status"] not in ("pending",)
+        is_underpaid = amount < order["total_amount"]
+        
+        if is_expired or is_underpaid:
             logger.warning("SePay MUA Fallback: Order %d (Status: %s, Paid: %d, Need: %d)", order_id, order["status"], amount, order["total_amount"])
             if telegram_id:
                 new_balance = await _db.update_balance(telegram_id, amount)
@@ -218,7 +224,9 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     )
                     await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
         except Exception as e:
-            logger.error("Failed handling MUA %d: %s", order_id, e)
+            logger.exception("Failed handling MUA %d: %s", order_id, e)
+            # Return 500 so SePay will retry
+            return web.json_response({"success": False, "error": str(e)}, status=500)
 
     return web.json_response({"success": True})
 

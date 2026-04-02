@@ -96,20 +96,10 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
     await db.conn.execute("UPDATE deposits SET code = ? WHERE id = ?", (code, deposit_id))
     await db.conn.commit()
 
-    # Generate QR URL (free, no API key needed)
-    from urllib.parse import quote
-    qr_url = (
-        f"https://img.vietqr.io/image/{config.bank_bin}-{config.bank_account}-compact2.png"
-        f"?amount={amount}&addInfo={quote(code)}&accountName={quote(config.bank_account_name)}"
-    )
-
-    # Map bank_bin to display name
-    bank_names = {
-        "mbb": "MBBank", "tcb": "Techcombank", "vcb": "Vietcombank",
-        "acb": "ACB", "tpb": "TPBank", "bidv": "BIDV",
-        "vtb": "VietinBank", "vpb": "VPBank", "scb": "Sacombank",
-    }
-    bank_display = bank_names.get(config.bank_bin.lower(), config.bank_bin.upper())
+    # Generate QR image with 3-tier fallback (URL → API → offline)
+    from src.services.vietqr import generate_qr_image, get_bank_display_name
+    qr_bytes = await generate_qr_image(amount, code)
+    bank_display = get_bank_display_name(config.bank_bin)
 
     text = t("deposit_qr", lang,
         amount=format_vnd(amount),
@@ -121,7 +111,7 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
     )
 
     await update.message.reply_photo(
-        photo=qr_url,
+        photo=qr_bytes,
         caption=text,
         parse_mode="HTML",
     )

@@ -184,7 +184,7 @@ class Database:
     # ── Deposits ──────────────────────────────────────────
 
     async def create_deposit(self, user_id: int, amount: int, code: str, expire_minutes: int = 30) -> dict:
-        expires_at = datetime.now() + timedelta(minutes=expire_minutes)
+        expires_at = datetime.utcnow() + timedelta(minutes=expire_minutes)
         cursor = await self.conn.execute(
             "INSERT INTO deposits (user_id, amount, code, expires_at) VALUES (?, ?, ?, ?)",
             (user_id, amount, code, expires_at.isoformat()),
@@ -208,7 +208,7 @@ class Database:
         await self.conn.commit()
 
     async def expire_old_deposits(self) -> list[dict]:
-        now = datetime.now().isoformat()
+        now = datetime.utcnow().isoformat()
         rows = await self._fetch_all(
             "SELECT * FROM deposits WHERE status = 'pending' AND expires_at < ?",
             (now,),

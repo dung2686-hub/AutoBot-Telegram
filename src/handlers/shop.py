@@ -210,7 +210,7 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         quantity=quantity,
         original_price=product.get("walletPricing", 0),
         sell_price=sell_price,
-        order_code="",  # Canboso order code, to be filled later
+        order_code="",
         delivered_data=[],
         status="pending"
     )
@@ -218,30 +218,24 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = order["id"]
     order_code_mem = f"MUA {order_id}"
 
-    # Generate VietQR URL
-    from src.config import config
-    from urllib.parse import quote
-    
-    bin_code = config.bank_bin
-    acc_no = config.bank_account
-    acc_name = config.bank_account_name
-    
-    if not bin_code or not acc_no:
-        await query.edit_message_text("Admin chưa cấu hình thanh toán QR. Vui lòng nạp ví.", show_alert=True)
+    # Validate bank config
+    from src.services.vietqr import generate_qr_image, get_bank_display_name
+
+    if not config.bank_bin or not config.bank_account:
+        await query.edit_message_text(
+            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
         return
 
-    qr_url = f"https://img.vietqr.io/image/{bin_code}-{acc_no}-compact2.png?amount={total}&addInfo={quote(order_code_mem)}&accountName={quote(acc_name)}"
-
-    bank_names = {
-        "mbb": "MBBank", "tcb": "Techcombank", "vcb": "Vietcombank",
-        "acb": "ACB", "tpb": "TPBank", "bidv": "BIDV",
-        "vtb": "VietinBank", "vpb": "VPBank", "scb": "Sacombank",
-    }
-    bank_display = bank_names.get(bin_code.lower(), bin_code.upper())
+    # Generate QR with 3-tier fallback
+    qr_bytes = await generate_qr_image(total, order_code_mem)
+    bank_display = get_bank_display_name(config.bank_bin)
 
     msg_text = (
-        f"🏦 <b>Chuyển khoản tới {bank_display} - {acc_no}</b>\n"
-        f"👤 Chủ TK: <b>{acc_name}</b>\n\n"
+        f"🏦 <b>Chuyển khoản tới {bank_display} - {config.bank_account}</b>\n"
+        f"👤 Chủ TK: <b>{config.bank_account_name}</b>\n\n"
         f"💰 Số tiền: <b>{format_vnd(total)}</b>\n"
         f"📝 Nội dung CK: <code>{order_code_mem}</code>\n"
         f"⏰ Thời gian còn lại: <b>5 phút</b>\n\n"
@@ -252,7 +246,7 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.delete()
     await context.bot.send_photo(
         chat_id=telegram_id,
-        photo=qr_url,
+        photo=qr_bytes,
         caption=msg_text,
         parse_mode="HTML",
         reply_markup=back_to_menu_keyboard(lang)

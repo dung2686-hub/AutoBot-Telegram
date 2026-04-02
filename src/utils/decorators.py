@@ -57,8 +57,16 @@ def error_handler(func):
             logger.exception("Handler error in %s: %s", func.__name__, e)
             lang = context.user_data.get("lang", "vi")
             msg = t("error_generic", lang)
-            if update.callback_query:
-                await update.callback_query.answer(msg, show_alert=True)
-            elif update.effective_message:
-                await update.effective_message.reply_text(msg)
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer(msg, show_alert=True)
+                elif update.effective_message:
+                    await update.effective_message.reply_text(msg)
+            except Exception:
+                pass  # Don't crash the error handler itself
+
+            # If inside a ConversationHandler, end the conversation to prevent stuck state
+            from telegram.ext import ConversationHandler
+            return ConversationHandler.END
     return wrapper
+
