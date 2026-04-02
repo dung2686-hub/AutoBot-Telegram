@@ -82,10 +82,8 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(t("deposit_invalid_amount", lang), parse_mode="HTML")
         return ENTER_AMOUNT
 
-    from src.services.vietqr import generate_vietqr
+    # Save pending deposit first to get ID
     import time
-
-    # Save pending deposit first to get ID (use temp unique code)
     temp_code = f"PENDING_{int(time.time() * 1000)}"
     deposit = await db.create_deposit(
         user_id=db_user["id"],
@@ -95,12 +93,15 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
     )
     deposit_id = deposit["id"]
     code = f"NAP {deposit_id}"
-    
-    # Update the deposit code with the actual NAP + ID
     await db.conn.execute("UPDATE deposits SET code = ? WHERE id = ?", (code, deposit_id))
     await db.conn.commit()
 
-    qr_bytes = await generate_vietqr(amount, code)
+    # Generate QR URL (free, no API key needed)
+    from urllib.parse import quote
+    qr_url = (
+        f"https://img.vietqr.io/image/{config.bank_bin}-{config.bank_account}-compact2.png"
+        f"?amount={amount}&addInfo={quote(code)}&accountName={quote(config.bank_account_name)}"
+    )
 
     # Map bank_bin to display name
     bank_names = {
@@ -119,14 +120,11 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         bank_account_name=config.bank_account_name,
     )
 
-    if qr_bytes:
-        await update.message.reply_photo(
-            photo=io.BytesIO(qr_bytes),
-            caption=text,
-            parse_mode="HTML",
-        )
-    else:
-        await update.message.reply_text(text, parse_mode="HTML")
+    await update.message.reply_photo(
+        photo=qr_url,
+        caption=text,
+        parse_mode="HTML",
+    )
 
     return ConversationHandler.END
 
