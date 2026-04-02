@@ -121,3 +121,76 @@ ngrok http 8443
 ```
 
 Copy URL ngrok (vd: `https://abc123.ngrok.io`) → cấu hình SePay webhook URL: `https://abc123.ngrok.io/webhook/sepay`
+
+## 🏦 Hướng dẫn đổi ngân hàng
+
+Khi muốn đổi tài khoản ngân hàng nhận tiền, chỉ cần thay **3 biến**:
+
+| Biến | Giá trị | Ví dụ |
+|------|---------|-------|
+| `BANK_BIN` | Mã ngân hàng (text hoặc số BIN) | `mbb` hoặc `970422` |
+| `BANK_ACCOUNT` | Số tài khoản ngân hàng | `0988660809` |
+| `BANK_ACCOUNT_NAME` | Tên chủ tài khoản (không dấu, in hoa) | `TRAN MANH DUNG` |
+
+### Mã ngân hàng được hỗ trợ
+
+| Text code | BIN | Ngân hàng |
+|-----------|-----|-----------|
+| `mbb` | `970422` | MBBank |
+| `tcb` | `970407` | Techcombank |
+| `vcb` | `970436` | Vietcombank |
+| `acb` | `970416` | ACB |
+| `tpb` | `970423` | TPBank |
+| `bidv` | `970418` | BIDV |
+| `vtb` | `970415` | VietinBank |
+| `vpb` | `970432` | VPBank |
+| `scb` | `970429` | Sacombank |
+| `msb` | `970426` | MSB |
+| `shb` | `970443` | SHB |
+| `ocb` | `970448` | OCB |
+| `hdbank` | `970437` | HDBank |
+| `eximbank` | `970431` | Eximbank |
+| `abbank` | `970425` | ABBank |
+| `pvcombank` | `970412` | PVcomBank |
+| `namabank` | `970428` | NamABank |
+| `lpb` | `970449` | LienVietPostBank |
+| `seabank` | `970440` | SeABank |
+| `vib` | `970441` | VIB |
+
+> 💡 `BANK_BIN` chấp nhận cả text code (`mbb`) lẫn số BIN (`970422`). Dùng cái nào cũng được.
+
+### Các bước đổi ngân hàng
+
+#### Trên Railway (production):
+
+1. Mở [Railway Dashboard](https://railway.app) → chọn project **AutoBot-Telegram**
+2. Vào tab **Variables**
+3. Sửa 3 biến:
+   ```
+   BANK_BIN=vcb
+   BANK_ACCOUNT=1234567890
+   BANK_ACCOUNT_NAME=NGUYEN VAN A
+   ```
+4. Railway **tự động redeploy** sau khi lưu biến
+
+#### Trên local (.env):
+
+1. Mở file `.env`
+2. Sửa 3 dòng:
+   ```
+   BANK_BIN=vcb
+   BANK_ACCOUNT=1234567890
+   BANK_ACCOUNT_NAME=NGUYEN VAN A
+   ```
+3. Restart bot: `python src/main.py`
+
+#### Đổi SePay:
+
+> ⚠️ Nếu đổi sang **ngân hàng khác**, phải cập nhật cả SePay:
+> 1. Vào [my.sepay.vn](https://my.sepay.vn) → **Tài khoản ngân hàng** → Thêm TK mới
+> 2. Liên kết TK ngân hàng mới với SePay
+> 3. Đảm bảo webhook vẫn hoạt động với TK mới
+
+### Kiểm tra nhanh
+
+Sau khi đổi, test bằng cách vào bot → **Nạp tiền** → nhập `10000` → phải hiện QR đúng ngân hàng mới.
