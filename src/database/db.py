@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -8,7 +9,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent.parent / "bot.db"
+DB_PATH = os.getenv("DB_PATH", str(Path(__file__).parent.parent.parent / "bot.db"))
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
