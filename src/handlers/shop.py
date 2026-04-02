@@ -87,10 +87,9 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product_id = parts[2]
     quantity = int(parts[3]) if len(parts) > 3 else 1
 
+    # Always refresh to get latest stock
+    await canboso.refresh_cache()
     product = canboso.find_product(product_id)
-    if not product:
-        await canboso.refresh_cache()
-        product = canboso.find_product(product_id)
 
     if not product:
         await query.edit_message_text(

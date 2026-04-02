@@ -158,8 +158,8 @@ async def run_scheduler(db: Database, canboso: CanbosoClient):
     # Expire old deposits every 5 minutes
     scheduler.add_job(db.expire_old_deposits, "interval", minutes=5)
 
-    # Refresh product cache every 5 minutes
-    scheduler.add_job(canboso.refresh_cache, "interval", minutes=5)
+    # Refresh product cache every 1 minute
+    scheduler.add_job(canboso.refresh_cache, "interval", minutes=1)
 
     scheduler.start()
     return scheduler
