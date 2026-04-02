@@ -123,13 +123,32 @@ class Database:
         )
         await self.conn.commit()
 
-    async def expire_old_deposits(self):
+    async def expire_old_deposits(self) -> list[dict]:
         now = datetime.now().isoformat()
-        await self.conn.execute(
-            "UPDATE deposits SET status = 'expired' WHERE status = 'pending' AND expires_at < ?",
+        rows = await self._fetch_all(
+            "SELECT * FROM deposits WHERE status = 'pending' AND expires_at < ?",
             (now,),
         )
-        await self.conn.commit()
+        if rows:
+            await self.conn.execute(
+                "UPDATE deposits SET status = 'expired' WHERE status = 'pending' AND expires_at < ?",
+                (now,),
+            )
+            await self.conn.commit()
+        return [dict(r) for r in rows]
+
+    async def expire_old_orders(self, minutes: int) -> list[dict]:
+        # orders table uses CURRENT_TIMESTAMP which is UTC in SQLite, we should compare appropriately.
+        # SQLite datetime('now', '-5 minutes')
+        rows = await self._fetch_all(
+            f"SELECT * FROM orders WHERE status = 'pending' AND created_at < datetime('now', '-{minutes} minutes')"
+        )
+        if rows:
+            await self.conn.execute(
+                f"UPDATE orders SET status = 'expired' WHERE status = 'pending' AND created_at < datetime('now', '-{minutes} minutes')"
+            )
+            await self.conn.commit()
+        return [dict(r) for r in rows]
 
     async def get_user_deposits(self, user_id: int, limit: int = 10) -> list[dict]:
         rows = await self._fetch_all(

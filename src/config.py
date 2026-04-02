@@ -31,7 +31,7 @@ class Config:
 
     # Bot
     default_markup_percent: int = field(default_factory=lambda: int(os.getenv("DEFAULT_MARKUP_PERCENT", "20")))
-    deposit_expire_minutes: int = field(default_factory=lambda: int(os.getenv("DEPOSIT_EXPIRE_MINUTES", "30")))
+    deposit_expire_minutes: int = field(default_factory=lambda: int(os.getenv("DEPOSIT_EXPIRE_MINUTES", "5")))
     default_language: str = field(default_factory=lambda: os.getenv("DEFAULT_LANGUAGE", "vi"))
 
 

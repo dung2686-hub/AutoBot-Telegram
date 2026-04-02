@@ -55,7 +55,7 @@ async def post_init(application: Application):
     application.bot_data["webhook_runner"] = runner
 
     # Start scheduler for periodic tasks
-    scheduler = await run_scheduler(db, canboso)
+    scheduler = await run_scheduler(application, db, canboso)
     application.bot_data["scheduler"] = scheduler
 
     # Set bot commands (shows in Menu)
@@ -152,12 +152,45 @@ async def run_webhook_server():
     return runner
 
 
-async def run_scheduler(db: Database, canboso: CanbosoClient):
+async def run_scheduler(application, db: Database, canboso: CanbosoClient):
     """Run periodic tasks."""
     scheduler = AsyncIOScheduler()
 
-    # Expire old deposits every 5 minutes
-    scheduler.add_job(db.expire_old_deposits, "interval", minutes=5)
+    async def check_expirations():
+        try:
+            # Expire deposits
+            expired_deposits = await db.expire_old_deposits()
+            for deposit in expired_deposits:
+                user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (deposit["user_id"],))
+                if user and user["telegram_id"]:
+                    try:
+                        await application.bot.send_message(
+                            chat_id=user["telegram_id"],
+                            text=f"⏱ <b>Yêu cầu Nạp ví (Mã: NAP {deposit['id']}) đã quá thời gian {config.deposit_expire_minutes} phút chưa nhận được thanh toán và đã bị hủy.</b>",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Cannot send deposit expiry to {user['telegram_id']}: {e}")
+            
+            # Expire orders (MUA)
+            # Default to 5 minutes expiration for QR orders
+            expired_orders = await db.expire_old_orders(minutes=5)
+            for order in expired_orders:
+                user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
+                if user and user["telegram_id"]:
+                    try:
+                        await application.bot.send_message(
+                            chat_id=user["telegram_id"],
+                            text=f"⏱ <b>Đơn hàng MUA {order['id']} đã quá 5 phút chưa nhận được thanh toán và đã bị hủy.</b>",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Cannot send order expiry to {user['telegram_id']}: {e}")
+        except Exception as e:
+            logger.error(f"Error in expiration task: {e}")
+
+    # Run expiration check every 1 minute
+    scheduler.add_job(check_expirations, "interval", minutes=1)
 
     # Refresh product cache every 1 minute
     scheduler.add_job(canboso.refresh_cache, "interval", minutes=1)
