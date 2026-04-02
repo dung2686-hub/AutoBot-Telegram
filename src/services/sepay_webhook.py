@@ -58,29 +58,27 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     
     if prefix == "NAP":
         # Find pending deposit
-        code_str = f"NAP_{code_id}" # Current db code format
-        deposit = await _db.find_pending_deposit(code_str)
-        if not deposit:
-            # Fallback for old format
-            deposit = await _db.find_pending_deposit(f"NAP{code_id}")
-            if not deposit:
-                logger.warning("SePay webhook: no pending deposit for %s", code_str)
-                return web.json_response({"success": True})
-
-        if amount < deposit["amount"]:
-            logger.warning("SePay webhook: amount mismatch for %s", code_str)
+        code_str = f"NAP_{code_id}" 
+        deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE code = ? AND status != 'completed'", (code_str,))
+        if not deposit_row:
+            deposit_row = await _db._fetch_one("SELECT * FROM deposits WHERE code = ? AND status != 'completed'", (f"NAP{code_id}",))
+            
+        if not deposit_row:
+            logger.warning("SePay webhook: no valid deposit found for %s", code_str)
             return web.json_response({"success": True})
 
-        await _db.complete_deposit(deposit["id"], reference_code)
-        
+        deposit = dict(deposit_row)
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (deposit["user_id"],))
         if not user_row: return web.json_response({"success": True})
         
         telegram_id = user_row["telegram_id"]
-        new_balance = await _db.update_balance(telegram_id, deposit["amount"])
+        
+        # WE CREDIT WHATEVER AMOUNT THEY TRANSFERRED
+        await _db.complete_deposit(deposit["id"], reference_code)
+        new_balance = await _db.update_balance(telegram_id, amount)
         
         await _db.add_transaction(
-            user_id=deposit["user_id"], tx_type="deposit", amount=deposit["amount"],
+            user_id=deposit["user_id"], tx_type="deposit", amount=amount,
             balance_after=new_balance, description=f"Nạp tiền ({code_str})", reference_id=str(deposit["id"])
         )
 
@@ -90,7 +88,9 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 from src.utils.formatters import format_vnd
                 user = await _db.get_user(telegram_id)
                 lang = user.get("language", "vi") if user else "vi"
-                msg = t("deposit_success", lang, amount=format_vnd(deposit["amount"]), balance=format_vnd(new_balance))
+                msg = t("deposit_success", lang, amount=format_vnd(amount), balance=format_vnd(new_balance))
+                if deposit['status'] != 'pending':
+                    msg = f"⏱ <b>Khoản nạp trễ được xử lý!</b>\n\n" + msg
                 await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
             except Exception as e:
                 logger.error("Failed to notify user %d: %s", telegram_id, e)
@@ -99,15 +99,39 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     elif prefix == "MUA":
         order_id = int(code_id)
         order = await _db.get_order(order_id)
-        if not order or order["status"] != "pending":
-            logger.warning("SePay webhook: no pending order for MUA %d", order_id)
+        
+        if not order or order["status"] == "completed":
+            logger.warning("SePay MUA webhook: order %d not found or already completed", order_id)
             return web.json_response({"success": True})
 
-        if amount < order["total_amount"]:
-            logger.warning("SePay webhook: amount mismatch for MUA %d", order_id)
-            # Not enough money, maybe add to their wallet instead?
-            # Doing a fallback refund to wallet
-            # ... we'll do this in the next pass if necessary, but skipping for now to keep it simple.
+        user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
+        telegram_id = user_row["telegram_id"] if user_row else None
+        
+        from src.utils.formatters import format_vnd
+        
+        # LATE PAYMENT OR PARTIAL PAYMENT FALLBACK
+        if order["status"] != "pending" or amount < order["total_amount"]:
+            logger.warning("SePay MUA Fallback: Order %d (Status: %s, Paid: %d, Need: %d)", order_id, order["status"], amount, order["total_amount"])
+            if telegram_id:
+                new_balance = await _db.update_balance(telegram_id, amount)
+                # Don't update order status here since it could be failed/expired already, or we fail it now if insufficient
+                if order["status"] == "pending":
+                    await _db.update_order(order_id, status="failed")
+                    
+                await _db.add_transaction(
+                    user_id=order["user_id"], tx_type="refund", amount=amount,
+                    balance_after=new_balance, description=f"Hoàn tiền QR ({order_id})", reference_id=str(order_id)
+                )
+                if _bot_app:
+                    reason = "giao dịch quá hạn" if order["status"] != "pending" else "thanh toán không đủ số dư"
+                    msg = (
+                        f"⚠️ <b>Xử lý đơn hàng {order_id} thất bại do {reason}!</b>\n\n"
+                        f"Phát hiện khoản thanh toán <b>{format_vnd(amount)}</b>.\n"
+                        f"Hệ thống đã tự động gỡ lỗi và cộng số tiền này vào <b>Số dư ví</b> của bạn để không bị thất thoát.\n"
+                        f"📌 <i>Số dư hiện tại: {format_vnd(new_balance)}</i>\n\n"
+                        f"Bạn có thể dùng ví để mua lại sản phẩm."
+                    )
+                    await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
             return web.json_response({"success": True})
 
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
