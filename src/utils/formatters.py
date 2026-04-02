@@ -4,19 +4,30 @@ def format_vnd(amount: int) -> str:
 
 
 def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
-    """Format delivered accounts for display."""
-    from src.i18n import t
-
+    """Format delivered accounts for display — shows ALL fields dynamically."""
     if not accounts:
         return "N/A"
 
+    field_icons = {
+        "user": "📧", "email": "📧", "username": "👤",
+        "password": "🔑", "pass": "🔑",
+        "verifyEmail": "📬", "verify_email": "📬",
+        "token": "🎫", "key": "🔐", "link": "🔗",
+        "code": "📋", "pin": "📌",
+    }
+
     lines = []
-    for acc in accounts:
-        lines.append(t("account_info", lang,
-            user=acc.get("user", "N/A"),
-            password=acc.get("password", "N/A"),
-            verify_email=acc.get("verifyEmail", "N/A"),
-        ))
+    for i, acc in enumerate(accounts):
+        if len(accounts) > 1:
+            lines.append(f"━━ Tài khoản {i+1} ━━")
+        for key, val in acc.items():
+            if key.startswith("_") or not val:
+                continue
+            icon = field_icons.get(key, "📋")
+            label = key.replace("_", " ").title()
+            lines.append(f"{icon} {label}: <code>{val}</code>")
+        if len(accounts) > 1:
+            lines.append("")
     return "\n".join(lines)
 
 
