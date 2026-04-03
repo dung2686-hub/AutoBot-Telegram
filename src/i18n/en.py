@@ -43,12 +43,12 @@ EN = {
     ),
     "purchase_success": (
         "✅ <b>Purchase successful!</b>\n\n"
-        "📦 Product: {name}\n"
-        "🔢 Quantity: {quantity}\n"
-        "💵 Charged: {total}\n"
-        "💳 Remaining: {balance}\n\n"
-        "📋 <b>Account details:</b>\n"
-        "{accounts}"
+        "🔐 <b>YOUR ACCOUNT:</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "{accounts}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "📦 {name} x{quantity}\n"
+        "💰 Charged: {total} → Remaining: {balance}"
     ),
     "account_info": (
         "━━━━━━━━━━━━━━━\n"
@@ -100,7 +100,7 @@ EN = {
 
     # History
     "history_title": "📜 <b>Purchase History</b>\n\n",
-    "history_item": "🔹 <b>{name}</b> x{qty}\n   💰 {price} — {date}\n\n",
+    "history_item": "{status_icon} <b>{name}</b> x{qty}\n   💰 {price} — {date}\n\n",
     "history_empty": "📭 You haven't purchased anything yet.",
     "history_detail": (
         "📦 <b>Order #{id}</b>\n\n"

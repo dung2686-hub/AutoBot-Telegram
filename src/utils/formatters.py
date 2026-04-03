@@ -17,17 +17,30 @@ def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
     }
 
     lines = []
+    copy_parts = []
     for i, acc in enumerate(accounts):
         if len(accounts) > 1:
             lines.append(f"━━ Tài khoản {i+1} ━━")
+        acc_values = []
         for key, val in acc.items():
             if key.startswith("_") or not val:
                 continue
             icon = field_icons.get(key, "📋")
             label = key.replace("_", " ").title()
             lines.append(f"{icon} {label}: <code>{val}</code>")
+            acc_values.append(str(val))
+        if acc_values:
+            copy_parts.append(" | ".join(acc_values))
         if len(accounts) > 1:
             lines.append("")
+
+    # Quick copy block — tap once to copy all
+    if copy_parts:
+        lines.append("")
+        copy_label = "📋 Copy nhanh:" if lang == "vi" else "📋 Quick copy:"
+        lines.append(f"<b>{copy_label}</b>")
+        lines.append(f"<code>{chr(10).join(copy_parts)}</code>")
+
     return "\n".join(lines)
 
 

@@ -49,8 +49,11 @@ async def history_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = t("history_title", lang)
     keyboard_rows = []
 
+    status_icons = {"completed": "✅", "pending": "⏳", "failed": "❌", "expired": "⏱"}
+
     for order in orders:
         text += t("history_item", lang,
+            status_icon=status_icons.get(order.get("status", ""), "🔹"),
             name=order["product_name"],
             qty=order["quantity"],
             price=format_vnd(order["total_amount"]),

@@ -43,12 +43,12 @@ VI = {
     ),
     "purchase_success": (
         "✅ <b>Mua hàng thành công!</b>\n\n"
-        "📦 Sản phẩm: {name}\n"
-        "🔢 Số lượng: {quantity}\n"
-        "💵 Đã trừ: {total}\n"
-        "💳 Số dư còn: {balance}\n\n"
-        "📋 <b>Thông tin tài khoản:</b>\n"
-        "{accounts}"
+        "🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "{accounts}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "📦 {name} x{quantity}\n"
+        "💰 Đã trừ: {total} → Còn: {balance}"
     ),
     "account_info": (
         "━━━━━━━━━━━━━━━\n"
@@ -100,7 +100,7 @@ VI = {
 
     # History
     "history_title": "📜 <b>Lịch sử mua hàng</b>\n\n",
-    "history_item": "🔹 <b>{name}</b> x{qty}\n   💰 {price} — {date}\n\n",
+    "history_item": "{status_icon} <b>{name}</b> x{qty}\n   💰 {price} — {date}\n\n",
     "history_empty": "📭 Bạn chưa mua sản phẩm nào.",
     "history_detail": (
         "📦 <b>Chi tiết đơn hàng #{id}</b>\n\n"
