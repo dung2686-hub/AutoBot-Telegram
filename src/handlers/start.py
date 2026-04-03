@@ -34,12 +34,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except ValueError:
                 pass
 
-    bot_username = (await bot.get_me()).username
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username
+    bot_display_name = bot_info.first_name
+
     ref_link = f"https://t.me/{bot_username}?start=ref_{telegram_id}"
 
     # Block 1: Welcome & Referral Program
     msg1 = (
-        f"👋 Xin chào {first_name} đã đến với bot của @{bot_username}!\n\n"
+        f"👋 Xin chào {first_name} đã đến với <b>{bot_display_name}</b>!\n\n"
         f"🎁 Chương trình giới thiệu bạn bè\n\n"
         f"• Chia sẻ link bot kèm mã giới thiệu của bạn.\n"
         f"• Khi người được mời phát sinh đơn hàng đầu tiên, bạn nhận 10% giá trị đơn vào ví.\n"
