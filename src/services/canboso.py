@@ -16,6 +16,8 @@ class CanbosoClient:
         self._key = config.canboso_api_key
         self._client: Optional[httpx.AsyncClient] = None
         self._products_cache: list[dict] = []
+        self._last_stock: dict[str, int] = {}
+        self.pending_restocks: list[dict] = []
 
     async def start(self):
         self._client = httpx.AsyncClient(timeout=30.0)
@@ -46,6 +48,22 @@ class CanbosoClient:
             if data.get("success"):
                 products = data.get("products", data.get("data", []))
                 if isinstance(products, list):
+                    new_stock = {}
+                    for p in products:
+                        pid = p.get("_id")
+                        avail = p.get("stats", {}).get("available", 0)
+                        if pid:
+                            new_stock[pid] = avail
+                            if pid in self._last_stock:
+                                old_avail = self._last_stock[pid]
+                                if avail > old_avail:
+                                    self.pending_restocks.append({
+                                        "product_id": pid,
+                                        "name": p.get("product_name", pid),
+                                        "added": avail - old_avail,
+                                        "total": avail
+                                    })
+                    self._last_stock = new_stock
                     self._products_cache = products
                 else:
                     self._products_cache = []

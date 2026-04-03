@@ -232,6 +232,44 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
         except Exception as e:
             logger.error(f"Backup failed: {e}")
 
+    async def check_and_broadcast_restocks():
+        try:
+            if not getattr(canboso, "pending_restocks", []):
+                return
+
+            restocks = canboso.pending_restocks[:]
+            canboso.pending_restocks.clear()
+
+            user_ids = await db.get_all_user_ids()
+            if not user_ids:
+                return
+
+            msg = "🚀 <b>HÀNG MỚI VỪA VỀ</b>\n\n"
+            for r in restocks:
+                msg += f"📦 <b>{r['name']}</b>\n➕ Thêm: {r['added']}\n📦 Tồn kho hiện tại: {r['total']}\n\n"
+            msg += "👉 Mở Menu Hoặc Bấm Nút Mua Ngay Bên Dưới Nhé!"
+
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+            if len(restocks) == 1:
+                pid = restocks[0]['product_id']
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Mua ngay", callback_data=f"shop:detail:{pid}")]])
+            else:
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Mở Shop", callback_data="menu:shop")]])
+
+            # Broadcast safely
+            for uid in user_ids:
+                try:
+                    await application.bot.send_message(chat_id=uid, text=msg, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Error in broadcast task: {e}")
+
+    # Run check broadcast every 1 minute
+    scheduler.add_job(check_and_broadcast_restocks, "interval", minutes=1)
+
     # Run expiration check every 1 minute
     scheduler.add_job(check_expirations, "interval", minutes=1)
 
