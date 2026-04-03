@@ -1,6 +1,24 @@
+import re
+
 def format_vnd(amount: int) -> str:
     """Format integer to VND string: 100000 -> '100,000đ'"""
     return f"{amount:,}đ".replace(",", ".")
+
+
+def shorten_product_name(name: str) -> str:
+    """Shorten common product keywords for mobile display. 
+    E.g. Bao hanh full -> BHF, Bảo hành -> BH"""
+    if not name:
+        return name
+        
+    name = re.sub(r"(?i)\bbảo hành full\b|\bbao hanh full\b", "BHF", name)
+    name = re.sub(r"(?i)\bbảo hành\b|\bbao hanh\b", "BH", name)
+    name = re.sub(r"(?i)\b tháng\b|\b thang\b", "T", name)
+    name = re.sub(r"(?i)\b năm\b|\b nam\b", "N", name)
+    
+    # Remove extra spaces caused by abbreviation if any
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
 
 
 def format_account_list(accounts: list[dict], lang: str = "vi") -> str:

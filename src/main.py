@@ -245,8 +245,10 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 return
 
             msg = "🚀 <b>HÀNG MỚI VỪA VỀ</b>\n\n"
+            from src.utils.formatters import shorten_product_name
             for r in restocks:
-                msg += f"📦 <b>{r['name']}</b>\n➕ Thêm: {r['added']}\n📦 Tồn kho hiện tại: {r['total']}\n\n"
+                short_name = shorten_product_name(r['name'])
+                msg += f"📦 <b>{short_name}</b>\n➕ Thêm: {r['added']}\n📦 Tồn kho hiện tại: {r['total']}\n\n"
             msg += "👉 Mở Menu Hoặc Bấm Nút Mua Ngay Bên Dưới Nhé!"
 
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup

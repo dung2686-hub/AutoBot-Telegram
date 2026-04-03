@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
-from src.utils.formatters import format_vnd
+from src.utils.formatters import format_vnd, shorten_product_name
 from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, confirm_cancel_keyboard
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{name} — {format_vnd(sell_price)}{stock_text}",
+                f"{shorten_product_name(name)} — {format_vnd(sell_price)}{stock_text}",
                 callback_data=f"shop:detail:{product_id}",
             )
         ])
@@ -131,7 +131,7 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     text = t("product_detail", lang,
-        name=product.get("product_name", ""),
+        name=shorten_product_name(product.get("product_name", "")),
         description=product.get("description", ""),
         price=format_vnd(sell_price),
         slot_info=slot_info,
