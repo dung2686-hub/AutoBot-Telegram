@@ -364,13 +364,17 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     # Deduct balance
+    logger.info("[WALLET-PURCHASE] Step 1: Deducting balance for user %s, amount %s", telegram_id, total)
     new_balance = await db.update_balance(telegram_id, -total)
+    logger.info("[WALLET-PURCHASE] Step 2: Balance deducted. New balance: %s", new_balance)
 
     # Get delivered accounts
     delivered = result.get("deliveredAccounts", [])
+    logger.info("[WALLET-PURCHASE] Step 3: Got delivered accounts. Type: %s, Count: %s", type(delivered).__name__, len(delivered) if isinstance(delivered, list) else "N/A")
 
     # Save order
     user = await db.get_user(telegram_id)
+    logger.info("[WALLET-PURCHASE] Step 4: Got user from DB: %s", user["id"] if user else "NONE")
     await db.create_order(
         user_id=user["id"],
         order_code=result.get("orderCode", ""),
@@ -381,6 +385,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         sell_price=sell_price,
         delivered_data=delivered,
     )
+    logger.info("[WALLET-PURCHASE] Step 5: Order saved to DB")
 
     # Log transaction
     await db.add_transaction(
@@ -390,6 +395,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         balance_after=new_balance,
         description=f"Mua {product.get('product_name', '')} x{quantity}",
     )
+    logger.info("[WALLET-PURCHASE] Step 6: Transaction logged")
 
     # Check and pay referral bonus
     bonus = await db.check_and_pay_referral_bonus(user["id"], total)
@@ -402,10 +408,12 @@ async def _do_execute_purchase(update, context, query, telegram_id):
                 await context.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
             except Exception:
                 pass
+    logger.info("[WALLET-PURCHASE] Step 7: Referral bonus checked (bonus=%s)", bonus)
 
     # Format accounts
     from src.utils.formatters import format_account_list
     accounts_text = format_account_list(delivered, lang)
+    logger.info("[WALLET-PURCHASE] Step 8: Accounts formatted. Text length: %d", len(accounts_text))
 
     text = t("purchase_success", lang,
         name=product.get("product_name", ""),
@@ -415,22 +423,28 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     )
     # Wallet-specific: show remaining balance
     text += f"\n💳 Số dư còn: {format_vnd(new_balance)}"
+    logger.info("[WALLET-PURCHASE] Step 9: Final message built. Length: %d chars", len(text))
 
     # Try edit first, fallback to send_message to prevent silent failure
     try:
         await query.edit_message_text(text, reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML")
+        logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via edit_message_text")
     except Exception as e:
-        logger.warning("edit_message_text failed after purchase, falling back to send_message: %s", e)
+        logger.warning("[WALLET-PURCHASE] edit_message_text FAILED: %s", e)
         try:
             await context.bot.send_message(
                 chat_id=telegram_id, text=text,
                 reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
             )
+            logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via send_message (HTML)")
         except Exception as e2:
-            # Last resort: send without HTML in case account data breaks HTML parsing
-            logger.error("send_message also failed: %s", e2)
-            plain = f"✅ Mua hàng thành công!\n\n{accounts_text}"
-            await context.bot.send_message(chat_id=telegram_id, text=plain)
+            logger.error("[WALLET-PURCHASE] send_message HTML FAILED: %s", e2)
+            try:
+                plain = f"✅ Mua hàng thành công!\n\n{accounts_text}"
+                await context.bot.send_message(chat_id=telegram_id, text=plain)
+                logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via send_message (plain)")
+            except Exception as e3:
+                logger.error("[WALLET-PURCHASE] ALL message attempts FAILED: %s", e3)
 
     # Refresh product cache
     await canboso.refresh_cache()

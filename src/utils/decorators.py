@@ -63,7 +63,13 @@ def error_handler(func):
                 elif update.effective_message:
                     await update.effective_message.reply_text(msg)
             except Exception:
-                pass  # Don't crash the error handler itself
+                # answer() already called — fallback to send_message
+                try:
+                    chat_id = update.effective_chat.id if update.effective_chat else None
+                    if chat_id:
+                        await context.bot.send_message(chat_id=chat_id, text=msg)
+                except Exception:
+                    pass
 
             # If inside a ConversationHandler, end the conversation to prevent stuck state
             from telegram.ext import ConversationHandler
