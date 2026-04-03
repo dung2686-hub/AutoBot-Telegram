@@ -202,12 +202,17 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m = markup_map.get(pid, {})
         fixed = m.get("fixed_price", 0)
         pct = m.get("markup_percent", config.default_markup_percent)
+        
+        # Đảm bảo lãi tối thiểu 10.000đ
+        min_sell = cost + 10000
+        calc_sell = int(cost * (1 + pct / 100))
+        calc_sell = max(calc_sell, min_sell)
 
         if fixed and fixed > 0:
-            sell = max(fixed, int(cost * (1 + pct / 100)))
+            sell = max(fixed, calc_sell)
             mode = "Cố định"
         else:
-            sell = int(cost * (1 + pct / 100))
+            sell = calc_sell
             mode = f"{pct}%"
 
         text += f"📦 <b>{name}</b>\n"
@@ -297,8 +302,12 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MARKUP_INPUT
 
         await db.set_markup(product_id, name, 0, fixed_price)
+        
+        # Calculate actual sell price applied
+        actual_sell = max(fixed_price, cost + 10000)
+        
         await update.message.reply_text(
-            f"✅ <b>{name}</b>\nGiá cố định: {format_vnd(fixed_price)} (gốc: {format_vnd(cost)})",
+            f"✅ <b>{name}</b>\nGiá cố định đã nhập: {format_vnd(fixed_price)}\nThực tế bán: <b>{format_vnd(actual_sell)}</b> (Gốc: {format_vnd(cost)})",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )
@@ -311,9 +320,16 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MARKUP_INPUT
 
         await db.set_markup(product_id, name, markup, 0)
-        sell = format_vnd(int(cost * (1 + markup / 100))) if cost else "N/A"
+        
+        if cost:
+            calc_sell = int(cost * (1 + markup / 100))
+            actual_sell = max(calc_sell, cost + 10000)
+            sell_str = format_vnd(actual_sell)
+        else:
+            sell_str = "N/A"
+
         await update.message.reply_text(
-            f"✅ <b>{name}</b>\nMarkup: {markup}% → Giá bán: {sell}",
+            f"✅ <b>{name}</b>\nMarkup: {markup}% → Giá bán: <b>{sell_str}</b>",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )
