@@ -68,6 +68,7 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(t("admin_broadcast_prompt", "vi"), parse_mode="HTML")
+    context.user_data["active_conv"] = "admin_broadcast"
     return BROADCAST_MESSAGE
 
 
@@ -75,6 +76,9 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @ensure_user
 @admin_only
 async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("active_conv") != "admin_broadcast":
+        return ConversationHandler.END
+
     db = context.bot_data["db"]
     message_text = update.message.text
 
@@ -105,6 +109,7 @@ async def credit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(t("admin_credit_prompt", "vi"), parse_mode="HTML")
+    context.user_data["active_conv"] = "admin_credit"
     return CREDIT_INPUT
 
 
@@ -112,6 +117,9 @@ async def credit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @ensure_user
 @admin_only
 async def credit_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("active_conv") != "admin_credit":
+        return ConversationHandler.END
+
     db = context.bot_data["db"]
 
     try:
@@ -243,6 +251,7 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [[InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    context.user_data["active_conv"] = "admin_markup"
     return MARKUP_INPUT
 
 
@@ -252,6 +261,9 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
+
+    if context.user_data.get("active_conv") != "admin_markup":
+        return ConversationHandler.END
 
     product_id = context.user_data.get("admin_markup_product_id")
     if not product_id:
@@ -307,6 +319,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
+    context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
 

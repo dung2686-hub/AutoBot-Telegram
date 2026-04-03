@@ -30,13 +30,16 @@ async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = t("support_title", lang)
 
     await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["active_conv"] = "support"
     return WAITING_MESSAGE
 
 
 @error_handler
 @ensure_user
 async def support_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Forward user's support message to admin."""
+    if context.user_data.get("active_conv") != "support":
+        return ConversationHandler.END
+
     lang = context.user_data.get("lang", "vi")
     user = update.effective_user
 
@@ -62,12 +65,14 @@ async def support_receive_message(update: Update, context: ContextTypes.DEFAULT_
         reply_markup=back_to_menu_keyboard(lang),
         parse_mode="HTML",
     )
+    context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
 
 async def support_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
+    context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
 

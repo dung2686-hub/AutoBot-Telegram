@@ -59,13 +59,16 @@ async def deposit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = t("deposit_enter_amount", lang)
 
     await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["active_conv"] = "deposit"
     return ENTER_AMOUNT
 
 
 @error_handler
 @ensure_user
 async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Process entered deposit amount → generate QR."""
+    if context.user_data.get("active_conv") != "deposit":
+        return ConversationHandler.END
+
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
     db_user = context.user_data["db_user"]
@@ -116,6 +119,7 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         parse_mode="HTML",
     )
 
+    context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
 
@@ -123,6 +127,7 @@ async def deposit_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel deposit flow."""
     if update.callback_query:
         await update.callback_query.answer()
+    context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
 
