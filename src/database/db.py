@@ -301,12 +301,12 @@ class Database:
         return row["cnt"] if row else 0
 
     async def get_total_revenue(self) -> int:
-        row = await self._fetch_one("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders")
+        row = await self._fetch_one("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE status = 'completed'")
         return row["total"] if row else 0
 
     async def get_today_orders_count(self) -> int:
         row = await self._fetch_one(
-            "SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = DATE('now')"
+            "SELECT COUNT(*) as cnt FROM orders WHERE status = 'completed' AND DATE(created_at) = DATE('now')"
         )
         return row["cnt"] if row else 0
 
