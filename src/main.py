@@ -252,7 +252,7 @@ def main():
         logger.error("❌ TELEGRAM_BOT_TOKEN not set! Copy .env.example to .env and fill in your token.")
         sys.exit(1)
 
-    logger.info("🤖 Starting AI Store Bot...")
+    logger.info("🤖 Starting AI Store Bot... [BUILD v2-debug]")
     logger.info("📡 SePay webhook will start on port %d", config.webhook_port)
 
     app = build_application()
