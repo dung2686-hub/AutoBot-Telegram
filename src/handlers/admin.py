@@ -203,13 +203,13 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fixed = m.get("fixed_price", 0)
         pct = m.get("markup_percent", config.default_markup_percent)
         
-        # Đảm bảo lãi tối thiểu 10.000đ
-        min_sell = cost + 10000
+        # Đảm bảo lãi tối thiểu 10k HOẶC 20%
+        min_sell = max(cost + 10000, int(cost * 1.20))
         calc_sell = int(cost * (1 + pct / 100))
         calc_sell = max(calc_sell, min_sell)
 
         if fixed and fixed > 0:
-            sell = max(fixed, calc_sell)
+            sell = max(fixed, min_sell)
             mode = "Cố định"
         else:
             sell = calc_sell
@@ -304,7 +304,8 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.set_markup(product_id, name, 0, fixed_price)
         
         # Calculate actual sell price applied
-        actual_sell = max(fixed_price, cost + 10000)
+        min_sell = max(cost + 10000, int(cost * 1.20))
+        actual_sell = max(fixed_price, min_sell)
         
         await update.message.reply_text(
             f"✅ <b>{name}</b>\nGiá cố định đã nhập: {format_vnd(fixed_price)}\nThực tế bán: <b>{format_vnd(actual_sell)}</b> (Gốc: {format_vnd(cost)})",
@@ -323,7 +324,8 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if cost:
             calc_sell = int(cost * (1 + markup / 100))
-            actual_sell = max(calc_sell, cost + 10000)
+            min_sell = max(cost + 10000, int(cost * 1.20))
+            actual_sell = max(calc_sell, min_sell)
             sell_str = format_vnd(actual_sell)
         else:
             sell_str = "N/A"

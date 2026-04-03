@@ -13,13 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
-    """Calculate sell price from markup settings. Guarantees min 10k profit."""
+    """Calculate sell price from markup settings. Guarantees min 10k or 20% profit."""
     m = await db.get_markup(product_id, config.default_markup_percent)
     markup_price = int(cost_price * (1 + m["markup_percent"] / 100))
-    markup_price = max(markup_price, cost_price + 10000)
+    
+    # Đảm bảo lãi tối thiểu 10k HOẶC 20%, tùy cái nào lớn hơn
+    min_sell = max(cost_price + 10000, int(cost_price * 1.20))
+    markup_price = max(markup_price, min_sell)
     
     if m["fixed_price"] > 0:
-        return max(m["fixed_price"], markup_price)
+        return max(m["fixed_price"], min_sell)
     return markup_price
 
 
