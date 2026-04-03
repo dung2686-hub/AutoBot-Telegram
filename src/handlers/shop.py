@@ -283,11 +283,27 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    telegram_id = update.effective_user.id
+
+    # Double-click protection
+    processing = context.bot_data.setdefault("_processing_purchases", set())
+    if telegram_id in processing:
+        await query.answer("⏳ Đang xử lý đơn hàng, vui lòng chờ...", show_alert=True)
+        return
+    processing.add(telegram_id)
+
+    try:
+        await _do_execute_purchase(update, context, query, telegram_id)
+    finally:
+        processing.discard(telegram_id)
+
+
+async def _do_execute_purchase(update, context, query, telegram_id):
+    """Internal purchase logic (separated for double-click protection)."""
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
     db_user = context.user_data["db_user"]
-    telegram_id = update.effective_user.id
 
     parts = query.data.split(":")
     product_id = parts[2]
