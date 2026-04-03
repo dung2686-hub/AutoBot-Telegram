@@ -46,9 +46,11 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    inactive_ids = await db.get_inactive_product_ids()
+
     keyboard = []
     for p in products:
-        if p.get("hiddenInBotMenu"):
+        if p.get("hiddenInBotMenu") or p.get("_id") in inactive_ids:
             continue
         name = p.get("product_name", "Unknown")
         price = p.get("walletPricing", 0)

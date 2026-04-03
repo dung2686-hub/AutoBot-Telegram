@@ -359,6 +359,20 @@ class Database:
         rows = await self._fetch_all("SELECT * FROM product_markups ORDER BY product_name")
         return [dict(r) for r in rows]
 
+    async def get_inactive_product_ids(self) -> set[str]:
+        rows = await self._fetch_all("SELECT product_id FROM product_markups WHERE is_active = 0")
+        return {r["product_id"] for r in rows}
+
+    async def toggle_markup_active(self, product_id: str, product_name: str, is_active: int):
+        await self.conn.execute(
+            """INSERT INTO product_markups (product_id, product_name, is_active)
+            VALUES (?, ?, ?)
+            ON CONFLICT(product_id) DO UPDATE SET
+                is_active = excluded.is_active""",
+            (product_id, product_name, is_active),
+        )
+        await self.conn.commit()
+
     # ── All Users (admin) ─────────────────────────────────
 
     async def get_all_user_ids(self) -> list[int]:

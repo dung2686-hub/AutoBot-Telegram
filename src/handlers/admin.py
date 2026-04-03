@@ -202,6 +202,9 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m = markup_map.get(pid, {})
         fixed = m.get("fixed_price", 0)
         pct = m.get("markup_percent", config.default_markup_percent)
+        is_active = m.get("is_active", 1)
+        
+        status_icon = "🟢" if is_active else "🔴"
         
         # Đảm bảo lãi tối thiểu 10k HOẶC 20%
         min_sell = max(cost + 10000, int(cost * 1.20))
@@ -215,10 +218,10 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sell = calc_sell
             mode = f"{pct}%"
 
-        text += f"📦 <b>{name}</b>\n"
+        text += f"{status_icon} <b>{name}</b>\n"
         text += f"   Gốc: {format_vnd(cost)} → Bán: <b>{format_vnd(sell)}</b> ({mode})\n"
 
-        btn_text = f"{name} | {format_vnd(cost)} → {format_vnd(sell)}"
+        btn_text = f"{status_icon} {name} | {format_vnd(sell)}"
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"admin:markup_select:{pid}")])
 
     text += "━━━━━━━━━━━━━━━━━━\n"
@@ -253,17 +256,27 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = product.get("product_name", product_id)
     cost = product.get("walletPricing", 0)
     
+    db = context.bot_data["db"]
+    m_row = await db._fetch_one("SELECT is_active FROM product_markups WHERE product_id = ?", (product_id,))
+    is_active = m_row["is_active"] if m_row else 1
+    status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
+    
     min_sell = max(cost + 10000, int(cost * 1.20))
 
     text = (
         f"Bạn đang đổi giá cho: <b>{name}</b>\n"
+        f"Trạng thái: <b>{status_text}</b>\n"
         f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
         f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>\n\n"
         f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
         f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>={min_sell}</code>):"
     )
     
-    keyboard = [[InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]]
+    toggle_btn_text = "🔴 Ẩn sản phẩm" if is_active else "🟢 Hiện sản phẩm"
+    keyboard = [
+        [InlineKeyboardButton(toggle_btn_text, callback_data=f"admin:markup_toggle:{product_id}")],
+        [InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]
+    ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     context.user_data["active_conv"] = "admin_markup"
     return MARKUP_INPUT
@@ -343,6 +356,36 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+@error_handler
+@ensure_user
+@admin_only
+async def markup_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    # query.answer() is handled in markup_prompt
+    
+    parts = query.data.split(":")
+    if len(parts) < 3:
+        return MARKUP_INPUT
+        
+    product_id = parts[2]
+    context.user_data["admin_markup_product_id"] = product_id
+    
+    db = context.bot_data["db"]
+    canboso = context.bot_data["canboso"]
+    
+    row = await db._fetch_one("SELECT is_active FROM product_markups WHERE product_id = ?", (product_id,))
+    current_active = row["is_active"] if row else 1
+    new_active = 0 if current_active else 1
+    
+    product = canboso.find_product(product_id)
+    name = product.get("product_name", product_id) if product else product_id
+    
+    await db.toggle_markup_active(product_id, name, new_active)
+    
+    # Re-render prompt with new state
+    return await markup_prompt(update, context)
+
+
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
@@ -370,6 +413,8 @@ def get_admin_conversation() -> ConversationHandler:
             ],
             MARKUP_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, markup_set),
+                CallbackQueryHandler(markup_toggle, pattern=r"^admin:markup_toggle:.*$"),
+                CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
             ],
         },
         fallbacks=[
