@@ -364,17 +364,14 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     # Deduct balance
-    logger.info("[WALLET-PURCHASE] Step 1: Deducting balance for user %s, amount %s", telegram_id, total)
+    logger.info("[WALLET-PURCHASE] Deducting %s from user %s", total, telegram_id)
     new_balance = await db.update_balance(telegram_id, -total)
-    logger.info("[WALLET-PURCHASE] Step 2: Balance deducted. New balance: %s", new_balance)
 
     # Get delivered accounts
     delivered = result.get("deliveredAccounts", [])
-    logger.info("[WALLET-PURCHASE] Step 3: Got delivered accounts. Type: %s, Count: %s", type(delivered).__name__, len(delivered) if isinstance(delivered, list) else "N/A")
 
     # Save order
     user = await db.get_user(telegram_id)
-    logger.info("[WALLET-PURCHASE] Step 4: Got user from DB: %s", user["id"] if user else "NONE")
     await db.create_order(
         user_id=user["id"],
         order_code=result.get("orderCode", ""),
@@ -385,7 +382,6 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         sell_price=sell_price,
         delivered_data=delivered,
     )
-    logger.info("[WALLET-PURCHASE] Step 5: Order saved to DB")
 
     # Log transaction
     await db.add_transaction(
@@ -395,25 +391,22 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         balance_after=new_balance,
         description=f"Mua {product.get('product_name', '')} x{quantity}",
     )
-    logger.info("[WALLET-PURCHASE] Step 6: Transaction logged")
 
     # Check and pay referral bonus
-    bonus = await db.check_and_pay_referral_bonus(user["id"], total)
-    if bonus > 0:
-        referrer = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
-        if referrer and referrer["telegram_id"]:
-            try:
-                from src.utils.formatters import format_vnd
-                msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{format_vnd(bonus)}</b> vào ví."
+    try:
+        bonus = await db.check_and_pay_referral_bonus(user["id"], total)
+        if bonus > 0:
+            referrer = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
+            if referrer and referrer["telegram_id"]:
+                from src.utils.formatters import format_vnd as _fv
+                msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{_fv(bonus)}</b> vào ví."
                 await context.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
-            except Exception:
-                pass
-    logger.info("[WALLET-PURCHASE] Step 7: Referral bonus checked (bonus=%s)", bonus)
+    except Exception as ref_err:
+        logger.warning("Referral bonus error (non-critical): %s", ref_err)
 
-    # Format accounts
+    # === SEND RESULT — use send_message (same as QR flow which works) ===
     from src.utils.formatters import format_account_list
     accounts_text = format_account_list(delivered, lang)
-    logger.info("[WALLET-PURCHASE] Step 8: Accounts formatted. Text length: %d", len(accounts_text))
 
     text = t("purchase_success", lang,
         name=product.get("product_name", ""),
@@ -421,30 +414,31 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         total=format_vnd(total),
         accounts=accounts_text,
     )
-    # Wallet-specific: show remaining balance
     text += f"\n💳 Số dư còn: {format_vnd(new_balance)}"
-    logger.info("[WALLET-PURCHASE] Step 9: Final message built. Length: %d chars", len(text))
 
-    # Try edit first, fallback to send_message to prevent silent failure
+    # Delete old confirmation message (non-critical)
     try:
-        await query.edit_message_text(text, reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML")
-        logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via edit_message_text")
-    except Exception as e:
-        logger.warning("[WALLET-PURCHASE] edit_message_text FAILED: %s", e)
-        try:
-            await context.bot.send_message(
-                chat_id=telegram_id, text=text,
-                reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
-            )
-            logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via send_message (HTML)")
-        except Exception as e2:
-            logger.error("[WALLET-PURCHASE] send_message HTML FAILED: %s", e2)
-            try:
-                plain = f"✅ Mua hàng thành công!\n\n{accounts_text}"
-                await context.bot.send_message(chat_id=telegram_id, text=plain)
-                logger.info("[WALLET-PURCHASE] Step 10: SUCCESS via send_message (plain)")
-            except Exception as e3:
-                logger.error("[WALLET-PURCHASE] ALL message attempts FAILED: %s", e3)
+        await query.message.delete()
+    except Exception:
+        pass
 
-    # Refresh product cache
-    await canboso.refresh_cache()
+    # Send NEW message (same approach as QR flow in sepay_webhook.py line 224)
+    try:
+        await context.bot.send_message(
+            chat_id=telegram_id, text=text,
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        logger.info("[WALLET-PURCHASE] Success message sent to %s", telegram_id)
+    except Exception as e:
+        logger.error("[WALLET-PURCHASE] send_message HTML failed: %s", e)
+        try:
+            plain = f"✅ Mua hàng thành công!\n\n{accounts_text}\n\n💳 Số dư còn: {format_vnd(new_balance)}"
+            await context.bot.send_message(chat_id=telegram_id, text=plain)
+        except Exception as e2:
+            logger.error("[WALLET-PURCHASE] ALL message attempts failed: %s", e2)
+
+    # Refresh product cache (non-critical)
+    try:
+        await canboso.refresh_cache()
+    except Exception:
+        pass
