@@ -187,4 +187,5 @@ def get_deposit_conversation() -> ConversationHandler:
             CallbackQueryHandler(deposit_cancel, pattern=r"^menu:"),
         ],
         per_message=False,
+        allow_reentry=True,
     )

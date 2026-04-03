@@ -336,4 +336,5 @@ def get_admin_conversation() -> ConversationHandler:
             CallbackQueryHandler(admin_cancel, pattern=r"^(menu:|admin:refresh)"),
         ],
         per_message=False,
+        allow_reentry=True,
     )

@@ -85,4 +85,5 @@ def get_support_conversation() -> ConversationHandler:
             CallbackQueryHandler(support_cancel, pattern=r"^menu:"),
         ],
         per_message=False,
+        allow_reentry=True,
     )
