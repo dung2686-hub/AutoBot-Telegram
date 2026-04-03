@@ -71,10 +71,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = main_menu_keyboard(lang="vi")
 
     # Send blocks sequentially
-    await update.message.reply_text(msg1, disable_web_page_preview=True)
-    await update.message.reply_text(msg2)
-    await update.message.reply_text(msg3)
-    await update.message.reply_text(msg4, reply_markup=keyboard)
+    await update.message.reply_text(msg1, disable_web_page_preview=True, parse_mode="HTML")
+    await update.message.reply_text(msg2, parse_mode="HTML")
+    await update.message.reply_text(msg3, parse_mode="HTML")
+    await update.message.reply_text(msg4, reply_markup=keyboard, parse_mode="HTML")
 
 
 @error_handler
