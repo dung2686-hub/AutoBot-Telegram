@@ -189,8 +189,8 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
-    text += f"Mặc định: {config.default_markup_percent}%\n\n"
-    text += "👇 <b>CHỌN SẢN PHẨM ĐỂ ĐỔI GIÁ:</b>"
+    text += f"Mặc định: {config.default_markup_percent}%\n"
+    text += "━━━━━━━━━━━━━━━━━━\n"
 
     keyboard = []
 
@@ -204,14 +204,20 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pct = m.get("markup_percent", config.default_markup_percent)
 
         if fixed and fixed > 0:
-            sell = format_vnd(max(fixed, int(cost * (1 + pct / 100))))
-            mode = f"Cố định"
+            sell = max(fixed, int(cost * (1 + pct / 100)))
+            mode = "Cố định"
         else:
-            sell = format_vnd(int(cost * (1 + pct / 100)))
+            sell = int(cost * (1 + pct / 100))
             mode = f"{pct}%"
 
-        btn_text = f"{name} ({mode})"
+        text += f"📦 <b>{name}</b>\n"
+        text += f"   Gốc: {format_vnd(cost)} → Bán: <b>{format_vnd(sell)}</b> ({mode})\n"
+
+        btn_text = f"{name} | {format_vnd(cost)} → {format_vnd(sell)}"
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"admin:markup_select:{pid}")])
+
+    text += "━━━━━━━━━━━━━━━━━━\n"
+    text += "👇 <b>CHỌN SẢN PHẨM ĐỂ ĐỔI GIÁ:</b>"
 
     keyboard.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:refresh")])
 
