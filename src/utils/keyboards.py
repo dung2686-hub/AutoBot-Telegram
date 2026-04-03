@@ -60,12 +60,16 @@ def payment_options_keyboard(product_id: str, quantity: int, lang: str = "vi") -
     ])
 
 
-def product_detail_keyboard(product_id: str, quantity: int, lang: str = "vi") -> InlineKeyboardMarkup:
+def product_detail_keyboard(product_id: str, quantity: int, lang: str = "vi", max_qty: int = None) -> InlineKeyboardMarkup:
+    next_qty = quantity + 1
+    if max_qty is not None and next_qty > max_qty:
+        next_qty = quantity  # Stay at current (➕ does nothing)
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(t("btn_quantity_down", lang), callback_data=f"shop:qty:{product_id}:{max(1, quantity - 1)}"),
             InlineKeyboardButton(f"  {quantity}  ", callback_data="noop"),
-            InlineKeyboardButton(t("btn_quantity_up", lang), callback_data=f"shop:qty:{product_id}:{quantity + 1}"),
+            InlineKeyboardButton(t("btn_quantity_up", lang), callback_data=f"shop:qty:{product_id}:{next_qty}"),
         ],
         [InlineKeyboardButton(t("btn_buy", lang), callback_data=f"shop:buy:{product_id}:{quantity}")],
         [InlineKeyboardButton(t("btn_back", lang), callback_data="menu:shop")],

@@ -102,10 +102,23 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
 
     stats = product.get("stats", {})
+    available = stats.get("available")
+
+    # Cap quantity at available stock
+    if available is not None and available > 0:
+        quantity = min(quantity, available)
+    elif available == 0:
+        await query.edit_message_text(
+            t("product_out_of_stock", lang),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
     slot_info = ""
     if stats.get("total") is not None:
         slot_info = t("slot_info", lang,
-            available=stats.get("available", 0),
+            available=available or 0,
             total=stats.get("total", 0),
         )
 
@@ -117,7 +130,7 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         quantity=quantity,
     )
 
-    keyboard = product_detail_keyboard(product_id, quantity, lang)
+    keyboard = product_detail_keyboard(product_id, quantity, lang, max_qty=available)
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
 
 
@@ -148,6 +161,16 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not product:
         await query.edit_message_text(
             t("product_out_of_stock", lang),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    # Stock check
+    available = product.get("stats", {}).get("available")
+    if available is not None and quantity > available:
+        await query.edit_message_text(
+            f"⚠️ Số lượng yêu cầu vượt quá tồn kho ({available}). Vui lòng chọn lại.",
             reply_markup=back_to_menu_keyboard(lang),
             parse_mode="HTML",
         )
