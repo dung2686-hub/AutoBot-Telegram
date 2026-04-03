@@ -161,7 +161,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             current_cost = product.get("walletPricing", 0) if product else float('inf')
             
             # If the product cost is now higher than what we sold it for, abort!
-            if not product or current_cost >= order["sell_price"]:
+            if not product or current_cost > order["sell_price"]:
                 logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
                 await canboso.close()
                 result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}

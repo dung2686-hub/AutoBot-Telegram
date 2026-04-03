@@ -300,7 +300,7 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = canboso.find_product(product_id)
     current_cost = product.get("walletPricing", 0) if product else float('inf')
     
-    if not product or current_cost >= sell_price:
+    if not product or current_cost > sell_price:
         await query.edit_message_text(
             "❌ <b>Sản phẩm tạm thời đổi giá hoặc ngừng bán từ hệ thống tổng. Giao dịch đã bị hủy để bảo vệ số dư của bạn!</b>",
             reply_markup=back_to_menu_keyboard(lang),
@@ -375,7 +375,21 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         accounts=accounts_text,
     )
 
-    await query.edit_message_text(text, reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML")
+    # Try edit first, fallback to send_message to prevent silent failure
+    try:
+        await query.edit_message_text(text, reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML")
+    except Exception as e:
+        logger.warning("edit_message_text failed after purchase, falling back to send_message: %s", e)
+        try:
+            await context.bot.send_message(
+                chat_id=telegram_id, text=text,
+                reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+            )
+        except Exception as e2:
+            # Last resort: send without HTML in case account data breaks HTML parsing
+            logger.error("send_message also failed: %s", e2)
+            plain = f"✅ Mua hàng thành công!\n\n{accounts_text}"
+            await context.bot.send_message(chat_id=telegram_id, text=plain)
 
     # Refresh product cache
     await canboso.refresh_cache()
