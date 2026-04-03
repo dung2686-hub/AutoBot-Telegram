@@ -371,9 +371,10 @@ async def execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name=product.get("product_name", ""),
         quantity=quantity,
         total=format_vnd(total),
-        balance=format_vnd(new_balance),
         accounts=accounts_text,
     )
+    # Wallet-specific: show remaining balance
+    text += f"\n💳 Số dư còn: {format_vnd(new_balance)}"
 
     # Try edit first, fallback to send_message to prevent silent failure
     try:

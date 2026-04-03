@@ -48,7 +48,7 @@ VI = {
         "{accounts}\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "📦 {name} x{quantity}\n"
-        "💰 Đã trừ: {total} → Còn: {balance}"
+        "💰 Thanh toán: {total}"
     ),
     "account_info": (
         "━━━━━━━━━━━━━━━\n"

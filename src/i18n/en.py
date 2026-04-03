@@ -48,7 +48,7 @@ EN = {
         "{accounts}\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "📦 {name} x{quantity}\n"
-        "💰 Charged: {total} → Remaining: {balance}"
+        "💰 Paid: {total}"
     ),
     "account_info": (
         "━━━━━━━━━━━━━━━\n"

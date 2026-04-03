@@ -219,8 +219,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,
                         name=order["product_name"], quantity=order["quantity"],
-                        total=format_vnd(order["total_amount"]), 
-                        balance=format_vnd(user["balance"] if user else 0), accounts=accounts_text
+                        total=format_vnd(order["total_amount"]), accounts=accounts_text
                     )
                     await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
         except Exception as e:
