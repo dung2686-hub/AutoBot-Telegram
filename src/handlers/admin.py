@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 BROADCAST_MESSAGE = 10
 CREDIT_INPUT = 11
 MARKUP_INPUT = 12
+MARKUP_SELECT = 13
 
 
 @error_handler
@@ -180,7 +181,10 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
-    text += f"Default: {config.default_markup_percent}%\n\n"
+    text += f"Mặc định: {config.default_markup_percent}%\n\n"
+    text += "👇 <b>CHỌN SẢN PHẨM ĐỂ ĐỔI GIÁ:</b>"
+
+    keyboard = []
 
     for p in products:
         pid = p.get("_id", "")
@@ -192,19 +196,53 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pct = m.get("markup_percent", config.default_markup_percent)
 
         if fixed and fixed > 0:
-            sell = format_vnd(fixed)
+            sell = format_vnd(max(fixed, int(cost * (1 + pct / 100))))
             mode = f"Cố định"
         else:
             sell = format_vnd(int(cost * (1 + pct / 100)))
             mode = f"{pct}%"
 
-        text += f"• <b>{name}</b>\n  Gốc: {format_vnd(cost)} → Bán: {sell} ({mode})\n  ID: <code>{pid}</code>\n\n"
+        btn_text = f"{name} ({mode})"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"admin:markup_select:{pid}")])
 
-    text += "\n📝 Cách thay đổi:\n"
-    text += "• Markup %: <code>ID 20</code>\n"
-    text += "• Giá cố định: <code>ID =25000</code>\n"
+    keyboard.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:refresh")])
 
-    await query.edit_message_text(text, reply_markup=admin_keyboard(), parse_mode="HTML")
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    return MARKUP_SELECT
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    if len(parts) < 3:
+        return MARKUP_SELECT
+    
+    product_id = parts[2]
+    context.user_data["admin_markup_product_id"] = product_id
+    
+    canboso = context.bot_data["canboso"]
+    product = canboso.find_product(product_id)
+    if not product:
+        await query.edit_message_text("❌ Không tìm thấy sản phẩm.")
+        return ConversationHandler.END
+
+    name = product.get("product_name", product_id)
+    cost = product.get("walletPricing", 0)
+
+    text = (
+        f"Bạn đang đổi giá cho: <b>{name}</b>\n"
+        f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n\n"
+        f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
+        f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>=25000</code>):"
+    )
+    
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     return MARKUP_INPUT
 
 
@@ -215,30 +253,11 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
 
-    raw = update.message.text.strip().replace(",", "").replace(".", "")
+    product_id = context.user_data.get("admin_markup_product_id")
+    if not product_id:
+        return ConversationHandler.END
 
-    # Try to extract product_id and value from various formats
-    # Format: "ID =25000", "ID=25000", "ID = 25000", "ID 20"
-    product_id = None
-    value = None
-
-    if "=" in raw:
-        # Fixed price: split on =
-        idx = raw.index("=")
-        product_id = raw[:idx].strip()
-        value = "=" + raw[idx+1:].strip()
-    else:
-        parts = raw.split()
-        if len(parts) >= 2:
-            product_id = parts[0]
-            value = parts[1]
-
-    if not product_id or not value:
-        await update.message.reply_text(
-            "❌ Format:\n• Markup %: <code>ID 20</code>\n• Giá cố định: <code>ID =25000</code>",
-            parse_mode="HTML",
-        )
-        return MARKUP_INPUT
+    value = update.message.text.strip().replace(",", "").replace(".", "")
 
     product = canboso.find_product(product_id)
     name = product.get("product_name", product_id) if product else product_id
@@ -254,7 +273,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if cost > 0 and fixed_price <= cost:
             await update.message.reply_text(
-                f"❌ Giá bán ({format_vnd(fixed_price)}) phải <b>cao hơn</b> giá gốc ({format_vnd(cost)})",
+                f"❌ Giá bán ({format_vnd(fixed_price)}) phải <b>cao hơn</b> giá gốc ({format_vnd(cost)}). Thử lại:",
                 parse_mode="HTML",
             )
             return MARKUP_INPUT
@@ -281,6 +300,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
+    context.user_data.pop("admin_markup_product_id", None)
     return ConversationHandler.END
 
 
@@ -303,6 +323,10 @@ def get_admin_conversation() -> ConversationHandler:
             ],
             CREDIT_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, credit_execute),
+            ],
+            MARKUP_SELECT: [
+                CallbackQueryHandler(markup_prompt, pattern=r"^admin:markup_select:.*$"),
+                CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
             ],
             MARKUP_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, markup_set),
