@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Ensure src is importable
@@ -193,13 +195,54 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
         except Exception as e:
             logger.error(f"Error in expiration task: {e}")
 
+    async def backup_database():
+        """Auto backup SQLite DB to admin Telegram."""
+        try:
+            db_path = Path(db.db_path)
+            if not db_path.exists():
+                logger.warning("Backup skipped: DB file not found")
+                return
+
+            # WAL checkpoint — flush WAL to main DB for clean backup
+            await db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            backup_path = db_path.parent / f"bot_backup_{timestamp}.db"
+            shutil.copy2(str(db_path), str(backup_path))
+
+            users_count = await db.count_users()
+            revenue = await db.get_total_revenue()
+
+            with open(str(backup_path), "rb") as f:
+                await application.bot.send_document(
+                    chat_id=config.admin_chat_id,
+                    document=f,
+                    caption=(
+                        f"🗄 <b>Auto Backup</b>\n"
+                        f"📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+                        f"👥 Users: {users_count}\n"
+                        f"💰 Revenue: {revenue:,}đ\n"
+                        f"📦 Size: {backup_path.stat().st_size / 1024:.1f} KB"
+                    ),
+                    parse_mode="HTML",
+                )
+
+            backup_path.unlink(missing_ok=True)
+            logger.info("Database backup sent to admin")
+        except Exception as e:
+            logger.error(f"Backup failed: {e}")
+
     # Run expiration check every 1 minute
     scheduler.add_job(check_expirations, "interval", minutes=1)
 
     # Refresh product cache every 1 minute
     scheduler.add_job(canboso.refresh_cache, "interval", minutes=1)
 
+    # Auto backup every 6 hours
+    scheduler.add_job(backup_database, "interval", hours=6)
+
     scheduler.start()
+    logger.info("Scheduler started: expiration(1m), cache(1m), backup(6h)")
     return scheduler
 
 
