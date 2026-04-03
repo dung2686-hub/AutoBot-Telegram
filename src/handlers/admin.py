@@ -252,12 +252,16 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name = product.get("product_name", product_id)
     cost = product.get("walletPricing", 0)
+    
+    min_sell = max(cost + 10000, int(cost * 1.20))
 
     text = (
         f"Bạn đang đổi giá cho: <b>{name}</b>\n"
-        f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n\n"
+        f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
+        f"🛡️ Bắt buộc bán từ: <b>{format_vnd(min_sell)}</b> trở lên\n"
+        f"<i>(Luật ép lãi tối thiểu min 10k hoặc 20%)</i>\n\n"
         f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
-        f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>=25000</code>):"
+        f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>={min_sell}</code>):"
     )
     
     keyboard = [[InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]]
