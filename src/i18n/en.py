@@ -116,10 +116,14 @@ EN = {
     "btn_next_page": "➡️ Next",
 
     # Support
-    "support_title": (
-        "💬 <b>Support</b>\n\n"
-        "Need help? Send us a message describing your issue.\n"
-        "Our team will respond as soon as possible."
+    "support_header": "💬 <b>SUPPORT</b>",
+    "support_contact_label": "Contact",
+    "support_cta": "Need help? Contact us through any channel above!",
+    "support_btn_send": "✉️ Send support message",
+    "support_ask_msg": (
+        "✉️ <b>Send Support Message</b>\n\n"
+        "Please describe your issue.\n"
+        "Our team will respond as soon as possible!"
     ),
     "support_sent": "✅ Message sent to support team.\nWe'll get back to you soon!",
     "support_admin_notify": "📩 <b>Support Message</b>\n\nFrom: {user} (@{username})\nID: <code>{user_id}</code>\n\n{message}",

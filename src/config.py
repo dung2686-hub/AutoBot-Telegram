@@ -34,5 +34,11 @@ class Config:
     deposit_expire_minutes: int = field(default_factory=lambda: int(os.getenv("DEPOSIT_EXPIRE_MINUTES", "5")))
     default_language: str = field(default_factory=lambda: os.getenv("DEFAULT_LANGUAGE", "vi"))
 
+    # Support Contact
+    shop_name: str = field(default_factory=lambda: os.getenv("SHOP_NAME", "AI Premium Store"))
+    support_zalo: str = field(default_factory=lambda: os.getenv("SUPPORT_ZALO", ""))
+    support_zalo_group: str = field(default_factory=lambda: os.getenv("SUPPORT_ZALO_GROUP", ""))
+    support_telegram: str = field(default_factory=lambda: os.getenv("SUPPORT_TELEGRAM", ""))
+
 
 config = Config()

@@ -116,11 +116,14 @@ VI = {
     "btn_next_page": "➡️ Sau",
 
     # Support
-    "support_title": (
-        "💬 <b>Hỗ trợ</b>\n\n"
-        "Bạn cần hỗ trợ? Hãy gửi tin nhắn mô tả vấn đề của bạn ngay tại đây.\n"
-        "Đội ngũ hỗ trợ sẽ nhận được thông báo và phản hồi sớm nhất có thể.\n\n"
-        "Hoặc liên hệ trực tiếp Admin: @dunghanhshop"
+    "support_header": "💬 <b>HỖ TRỢ</b>",
+    "support_contact_label": "Liên hệ",
+    "support_cta": "Cần hỗ trợ? Liên hệ với chúng tôi qua bất kỳ kênh nào ở trên!",
+    "support_btn_send": "✉️ Gửi tin nhắn hỗ trợ",
+    "support_ask_msg": (
+        "✉️ <b>Gửi tin nhắn hỗ trợ</b>\n\n"
+        "Hãy nhập tin nhắn mô tả vấn đề của bạn.\n"
+        "Đội ngũ hỗ trợ sẽ phản hồi sớm nhất có thể!"
     ),
     "support_sent": "✅ Tin nhắn đã được gửi tới đội ngũ hỗ trợ.\nChúng tôi sẽ phản hồi sớm nhất!",
     "support_admin_notify": "📩 <b>Tin nhắn hỗ trợ</b>\n\nTừ: {user} (@{username})\nID: <code>{user_id}</code>\n\n{message}",
