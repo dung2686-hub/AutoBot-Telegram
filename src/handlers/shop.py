@@ -1,4 +1,5 @@
 import logging
+import math
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -12,6 +13,11 @@ from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, 
 logger = logging.getLogger(__name__)
 
 
+def _round_up_1000(price: int) -> int:
+    """Làm tròn lên bội số 1000đ gần nhất. VD: 54200 → 55000."""
+    return int(math.ceil(price / 1000) * 1000)
+
+
 async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
     """Calculate sell price from markup settings. Guarantees min 10k or 20% profit."""
     m = await db.get_markup(product_id, config.default_markup_percent)
@@ -23,7 +29,7 @@ async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
     
     if m["fixed_price"] > 0:
         return max(m["fixed_price"], min_sell)
-    return markup_price
+    return _round_up_1000(markup_price)
 
 
 @error_handler
