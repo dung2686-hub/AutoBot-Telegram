@@ -45,7 +45,14 @@ def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
                 continue
             icon = field_icons.get(key, "📋")
             label = key.replace("_", " ").title()
-            lines.append(f"{icon} {label}: <code>{val}</code>")
+            # Auto-convert ISO date fields to VN time
+            display_val = val
+            if isinstance(val, str) and ("T" in val and ("Z" in val or "+" in val)) or key.lower().endswith(("at", "date", "time")):
+                try:
+                    display_val = format_date(val)
+                except Exception:
+                    pass
+            lines.append(f"{icon} {label}: <code>{display_val}</code>")
             acc_values.append(str(val))
         if acc_values:
             copy_parts.append(" | ".join(acc_values))
