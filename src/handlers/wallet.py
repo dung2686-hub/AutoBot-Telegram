@@ -95,7 +95,7 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         expire_minutes=config.deposit_expire_minutes,
     )
     deposit_id = deposit["id"]
-    code = f"NAP {deposit_id}"
+    code = f"NAP{deposit_id}"
     await db.conn.execute("UPDATE deposits SET code = ? WHERE id = ?", (code, deposit_id))
     await db.conn.commit()
 

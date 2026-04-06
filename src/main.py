@@ -170,10 +170,22 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (deposit["user_id"],))
                 if user and user["telegram_id"]:
                     try:
+                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                        from src.utils.formatters import format_vnd as _fv
+                        dep_amount = deposit.get('amount', 0)
+                        msg = (
+                            f"⏱ <b>Yêu cầu nạp ví NAP{deposit['id']} đã hết hạn!</b>\n\n"
+                            f"💰 Số tiền: <b>{_fv(dep_amount)}</b>\n\n"
+                            f"Đơn nạp bị hủy do chưa nhận được thanh toán trong {config.deposit_expire_minutes} phút.\n"
+                            f"⚠️ <i>Nếu bạn đã chuyển khoản, hệ thống sẽ tự động cộng tiền vào ví khi nhận được.</i>"
+                        )
+                        kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("💳 Xem ví", callback_data="menu:wallet")],
+                            [InlineKeyboardButton("📋 Menu chính", callback_data="menu:main")]
+                        ])
                         await application.bot.send_message(
-                            chat_id=user["telegram_id"],
-                            text=f"⏱ <b>Yêu cầu Nạp ví (Mã: NAP {deposit['id']}) đã quá thời gian {config.deposit_expire_minutes} phút chưa nhận được thanh toán và đã bị hủy.</b>",
-                            parse_mode="HTML"
+                            chat_id=user["telegram_id"], text=msg,
+                            reply_markup=kb, parse_mode="HTML"
                         )
                     except Exception as e:
                         logger.error(f"Cannot send deposit expiry to {user['telegram_id']}: {e}")
@@ -185,10 +197,24 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
                 if user and user["telegram_id"]:
                     try:
+                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                        from src.utils.formatters import format_vnd
+                        product_name = order.get('product_name', 'Sản phẩm')
+                        total = order.get('total_amount', 0)
+                        msg = (
+                            f"⏱ <b>Đơn hàng MUA{order['id']} đã hết hạn!</b>\n\n"
+                            f"📦 Sản phẩm: <b>{product_name}</b>\n"
+                            f"💰 Số tiền: <b>{format_vnd(total)}</b>\n\n"
+                            f"Đơn bị hủy do chưa nhận được thanh toán trong 5 phút.\n"
+                            f"⚠️ <i>Nếu bạn đã chuyển khoản, hệ thống sẽ tự động hoàn tiền vào ví khi nhận được.</i>"
+                        )
+                        kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🛒 Mua lại", callback_data=f"shop:detail:{order['product_id']}")],
+                            [InlineKeyboardButton("📋 Menu chính", callback_data="menu:main")]
+                        ])
                         await application.bot.send_message(
-                            chat_id=user["telegram_id"],
-                            text=f"⏱ <b>Đơn hàng MUA {order['id']} đã quá 5 phút chưa nhận được thanh toán và đã bị hủy.</b>",
-                            parse_mode="HTML"
+                            chat_id=user["telegram_id"], text=msg,
+                            reply_markup=kb, parse_mode="HTML"
                         )
                     except Exception as e:
                         logger.error(f"Cannot send order expiry to {user['telegram_id']}: {e}")
@@ -280,6 +306,29 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
 
     # Auto backup every 6 hours
     scheduler.add_job(backup_database, "interval", hours=6)
+
+    # Daily summary at 23:59 VN time (= 16:59 UTC)
+    async def daily_summary():
+        try:
+            if not config.admin_chat_id:
+                return
+            from src.utils.formatters import format_vnd, now_vn
+            stats = await db.get_daily_stats()
+            total_users = await db.count_users()
+            date_str = now_vn().strftime("%d/%m/%Y")
+            msg = (
+                f"📊 <b>BÁO CÁO NGÀY {date_str}</b>\n\n"
+                f"🛒 Đơn hàng: {stats['completed']} ✅ / {stats['failed']} ❌\n"
+                f"💰 Doanh thu: {format_vnd(stats['revenue'])}\n"
+                f"📊 Lãi ròng: +{format_vnd(stats['profit'])}\n"
+                f"💳 Nạp ví: {format_vnd(stats['deposits'])}\n"
+                f"👥 Khách mới: {stats['new_users']} (Tổng: {total_users})"
+            )
+            await application.bot.send_message(chat_id=config.admin_chat_id, text=msg, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Daily summary failed: {e}")
+
+    scheduler.add_job(daily_summary, "cron", hour=16, minute=59)  # 23:59 VN
 
     scheduler.start()
     logger.info("Scheduler started: expiration(1m), cache(1m), backup(6h)")

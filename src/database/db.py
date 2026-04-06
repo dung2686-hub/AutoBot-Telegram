@@ -304,6 +304,34 @@ class Database:
         row = await self._fetch_one("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE status = 'completed'")
         return row["total"] if row else 0
 
+    async def get_daily_stats(self) -> dict:
+        """Get today's order and revenue statistics."""
+        orders_row = await self._fetch_one(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as revenue "
+            "FROM orders WHERE status = 'completed' AND DATE(created_at) = DATE('now')"
+        )
+        failed_row = await self._fetch_one(
+            "SELECT COUNT(*) as cnt FROM orders WHERE status IN ('failed', 'expired') AND DATE(created_at) = DATE('now')"
+        )
+        profit_row = await self._fetch_one(
+            "SELECT COALESCE(SUM((sell_price - original_price) * quantity), 0) as profit "
+            "FROM orders WHERE status = 'completed' AND DATE(created_at) = DATE('now')"
+        )
+        deposit_row = await self._fetch_one(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'deposit' AND DATE(created_at) = DATE('now')"
+        )
+        new_users_row = await self._fetch_one(
+            "SELECT COUNT(*) as cnt FROM users WHERE DATE(created_at) = DATE('now')"
+        )
+        return {
+            "completed": orders_row["cnt"] if orders_row else 0,
+            "failed": failed_row["cnt"] if failed_row else 0,
+            "revenue": orders_row["revenue"] if orders_row else 0,
+            "profit": profit_row["profit"] if profit_row else 0,
+            "deposits": deposit_row["total"] if deposit_row else 0,
+            "new_users": new_users_row["cnt"] if new_users_row else 0,
+        }
+
     async def get_today_orders_count(self) -> int:
         row = await self._fetch_one(
             "SELECT COUNT(*) as cnt FROM orders WHERE status = 'completed' AND DATE(created_at) = DATE('now')"

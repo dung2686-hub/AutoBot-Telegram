@@ -253,7 +253,7 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     order_id = order["id"]
-    order_code_mem = f"MUA {order_id}"
+    order_code_mem = f"MUA{order_id}"
 
     # Validate bank config
     from src.services.vietqr import generate_qr_image, get_bank_display_name
@@ -455,3 +455,24 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         await canboso.refresh_cache()
     except Exception:
         pass
+
+    # === NOTIFY ADMIN: New wallet order ===
+    if config.admin_chat_id:
+        try:
+            from src.utils.formatters import now_vn
+            cost = product.get("walletPricing", 0) * quantity
+            profit = total - cost
+            time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+            admin_msg = (
+                f"🛒 <b>ĐƠN HÀNG MỚI</b>\n\n"
+                f"👤 Khách: {user.get('full_name', 'N/A')}\n"
+                f"📦 SP: {product.get('product_name', '')} x{quantity}\n"
+                f"💰 Bán: {format_vnd(total)}\n"
+                f"💵 Vốn: {format_vnd(cost)}\n"
+                f"📊 Lãi: +{format_vnd(profit)}\n"
+                f"💳 TT: Ví\n\n"
+                f"⏰ {time_str}"
+            )
+            await context.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+        except Exception:
+            pass

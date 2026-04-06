@@ -63,15 +63,25 @@ def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
 
 
 def format_date(date_str: str) -> str:
-    """Format ISO date to readable: '2026-04-02T14:00:00' -> '02/04/2026 14:00'"""
+    """Format ISO date to readable VN time: UTC -> GMT+7."""
     if not date_str:
         return "N/A"
     try:
-        from datetime import datetime
-        dt = datetime.fromisoformat(date_str)
-        return dt.strftime("%d/%m/%Y %H:%M")
+        from datetime import datetime, timedelta, timezone
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        vn_tz = timezone(timedelta(hours=7))
+        dt_vn = dt.astimezone(vn_tz)
+        return dt_vn.strftime("%d/%m/%Y %H:%M")
     except (ValueError, TypeError):
         return str(date_str)[:16]
+
+
+def now_vn():
+    """Get current Vietnam time (GMT+7)."""
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone(timedelta(hours=7)))
 
 
 def tx_icon(tx_type: str) -> str:

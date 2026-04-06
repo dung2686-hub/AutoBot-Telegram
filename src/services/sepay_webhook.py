@@ -83,7 +83,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         
         await _db.add_transaction(
             user_id=deposit["user_id"], tx_type="deposit", amount=amount,
-            balance_after=new_balance, description=f"Nạp tiền (NAP {deposit_id})", reference_id=str(deposit["id"])
+            balance_after=new_balance, description=f"Nạp tiền (NAP{deposit_id})", reference_id=str(deposit["id"])
         )
 
         if _bot_app:
@@ -130,15 +130,31 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     balance_after=new_balance, description=f"Hoàn tiền QR ({order_id})", reference_id=str(order_id)
                 )
                 if _bot_app:
-                    reason = "giao dịch quá hạn" if order["status"] != "pending" else "thanh toán không đủ số dư"
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    if order["status"] != "pending":
+                        reason_text = "đã hết hạn"
+                        reason_emoji = "⏱"
+                    else:
+                        reason_text = "thanh toán không đủ"
+                        reason_emoji = "💸"
+                    product_name = order.get('product_name', 'Sản phẩm')
                     msg = (
-                        f"⚠️ <b>Xử lý đơn hàng {order_id} thất bại do {reason}!</b>\n\n"
-                        f"Phát hiện khoản thanh toán <b>{format_vnd(amount)}</b>.\n"
-                        f"Hệ thống đã tự động gỡ lỗi và cộng số tiền này vào <b>Số dư ví</b> của bạn để không bị thất thoát.\n"
-                        f"📌 <i>Số dư hiện tại: {format_vnd(new_balance)}</i>\n\n"
-                        f"Bạn có thể dùng ví để mua lại sản phẩm."
+                        f"{reason_emoji} <b>Nhận được {format_vnd(amount)} cho đơn MUA{order_id}!</b>\n\n"
+                        f"📦 Sản phẩm: <b>{product_name}</b>\n"
+                        f"💰 Giá đơn: <b>{format_vnd(order['total_amount'])}</b>\n"
+                        f"💳 Đã chuyển: <b>{format_vnd(amount)}</b>\n\n"
+                        f"Đơn hàng {reason_text} nên không thể xử lý tự động.\n"
+                        f"Số tiền đã được <b>hoàn vào Số dư ví</b> để bạn không bị mất.\n\n"
+                        f"📌 <i>Số dư hiện tại: {format_vnd(new_balance)}</i>"
                     )
-                    await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+                    kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🛒 Mua lại sản phẩm", callback_data=f"shop:detail:{order['product_id']}")],
+                        [InlineKeyboardButton("💳 Xem ví", callback_data="menu:wallet")]
+                    ])
+                    await _bot_app.bot.send_message(
+                        chat_id=telegram_id, text=msg,
+                        reply_markup=kb, parse_mode="HTML"
+                    )
             return web.json_response({"success": True})
 
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
@@ -189,7 +205,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 if _bot_app and config.admin_chat_id:
                     admin_msg = (
                         f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
-                        f"Đơn: MUA {order_id}\n"
+                        f"Đơn: MUA{order_id}\n"
                         f"Sản phẩm: {order['product_name']}\n"
                         f"SL: {order['quantity']}\n"
                         f"Lỗi: <code>{error_msg}</code>\n\n"
@@ -222,6 +238,27 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         total=format_vnd(order["total_amount"]), accounts=accounts_text
                     )
                     await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+
+                # === NOTIFY ADMIN: New order completed ===
+                if _bot_app and config.admin_chat_id:
+                    try:
+                        from src.utils.formatters import now_vn
+                        cost = order["original_price"] * order["quantity"]
+                        profit = order["total_amount"] - cost
+                        time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                        admin_msg = (
+                            f"🛒 <b>ĐƠN HÀNG MỚI #{order_id}</b>\n\n"
+                            f"👤 Khách: {user.get('full_name', 'N/A') if user else 'N/A'}\n"
+                            f"📦 SP: {order['product_name']} x{order['quantity']}\n"
+                            f"💰 Bán: {format_vnd(order['total_amount'])}\n"
+                            f"💵 Vốn: {format_vnd(cost)}\n"
+                            f"📊 Lãi: +{format_vnd(profit)}\n"
+                            f"💳 TT: QR chuyển khoản\n\n"
+                            f"⏰ {time_str}"
+                        )
+                        await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                    except Exception:
+                        pass
         except Exception as e:
             logger.exception("Failed handling MUA %d: %s", order_id, e)
             # Return 500 so SePay will retry
