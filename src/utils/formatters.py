@@ -53,7 +53,6 @@ def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
                 except Exception:
                     pass
             lines.append(f"{icon} {label}: <code>{display_val}</code>")
-            # Only include user/password in quick copy
             if key.lower() in ("user", "email", "username", "password", "pass"):
                 acc_values.append(str(val))
         if acc_values:
