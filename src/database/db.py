@@ -36,7 +36,12 @@ class Database:
             await self.conn.execute("ALTER TABLE product_markups ADD COLUMN fixed_price INTEGER DEFAULT 0")
             logger.info("Migration: added fixed_price column")
         except Exception:
-            pass  # Column already exists
+            pass
+        try:
+            await self.conn.execute("ALTER TABLE product_markups ADD COLUMN custom_note TEXT DEFAULT ''")
+            logger.info("Migration: added custom_note column")
+        except Exception:
+            pass
 
     async def close(self):
         if self._conn:
@@ -370,6 +375,23 @@ class Database:
         if row:
             return {"markup_percent": row["markup_percent"], "fixed_price": row["fixed_price"] or 0}
         return {"markup_percent": default, "fixed_price": 0}
+
+    async def get_custom_note(self, product_id: str) -> str:
+        row = await self._fetch_one(
+            "SELECT custom_note FROM product_markups WHERE product_id = ?",
+            (product_id,),
+        )
+        return row["custom_note"] if row and row["custom_note"] else ""
+
+    async def set_custom_note(self, product_id: str, product_name: str, note: str):
+        await self.conn.execute(
+            """INSERT INTO product_markups (product_id, product_name, custom_note)
+            VALUES (?, ?, ?)
+            ON CONFLICT(product_id) DO UPDATE SET
+                custom_note = excluded.custom_note""",
+            (product_id, product_name, note),
+        )
+        await self.conn.commit()
 
     async def set_markup(self, product_id: str, product_name: str, markup_percent: int, fixed_price: int = 0):
         await self.conn.execute(

@@ -136,6 +136,9 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total=stats.get("total", 0),
         )
 
+    # Get shop custom note
+    custom_note = await db.get_custom_note(product_id)
+
     text = t("product_detail", lang,
         name=shorten_product_name(product.get("product_name", "")),
         description=product.get("description", ""),
@@ -143,6 +146,9 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         slot_info=slot_info,
         quantity=quantity,
     )
+
+    if custom_note:
+        text += f"\n\n📌 <b>Ghi chú từ shop:</b>\n{custom_note}"
 
     keyboard = product_detail_keyboard(product_id, quantity, lang, max_qty=available)
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")

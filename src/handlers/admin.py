@@ -21,6 +21,7 @@ BROADCAST_MESSAGE = 10
 CREDIT_INPUT = 11
 MARKUP_INPUT = 12
 MARKUP_SELECT = 13
+NOTE_INPUT = 14
 
 
 @error_handler
@@ -262,18 +263,23 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
     
     min_sell = max(cost + 10000, int(cost * 1.20))
+    
+    current_note = await db.get_custom_note(product_id)
+    note_preview = f"\n📌 Ghi chú: <i>{current_note[:80]}{'...' if len(current_note) > 80 else ''}</i>" if current_note else "\n📌 Ghi chú: <i>(chưa có)</i>"
 
     text = (
         f"Bạn đang đổi giá cho: <b>{name}</b>\n"
         f"Trạng thái: <b>{status_text}</b>\n"
         f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
-        f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>\n\n"
+        f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>"
+        f"{note_preview}\n\n"
         f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
         f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>={min_sell}</code>):"
     )
     
     toggle_btn_text = "🔴 Ẩn sản phẩm" if is_active else "🟢 Hiện sản phẩm"
     keyboard = [
+        [InlineKeyboardButton("📝 Sửa ghi chú", callback_data=f"admin:note_edit:{product_id}")],
         [InlineKeyboardButton(toggle_btn_text, callback_data=f"admin:markup_toggle:{product_id}")],
         [InlineKeyboardButton("⬅️ Hủy đổi giá", callback_data="admin:markup")]
     ]
@@ -386,6 +392,72 @@ async def markup_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await markup_prompt(update, context)
 
 
+@error_handler
+@ensure_user
+@admin_only
+async def note_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    product_id = parts[2]
+    context.user_data["admin_note_product_id"] = product_id
+
+    canboso = context.bot_data["canboso"]
+    db = context.bot_data["db"]
+    product = canboso.find_product(product_id)
+    name = product.get("product_name", product_id) if product else product_id
+
+    current_note = await db.get_custom_note(product_id)
+    note_display = current_note if current_note else "(chưa có)"
+
+    text = (
+        f"📝 <b>Sửa ghi chú cho: {name}</b>\n\n"
+        f"Ghi chú hiện tại:\n<i>{note_display}</i>\n\n"
+        f"Nhập ghi chú mới (hoặc gõ <code>xoa</code> để xóa):"
+    )
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:markup")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    context.user_data["active_conv"] = "admin_note"
+    return NOTE_INPUT
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def note_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("active_conv") != "admin_note":
+        return ConversationHandler.END
+
+    db = context.bot_data["db"]
+    canboso = context.bot_data["canboso"]
+    product_id = context.user_data.get("admin_note_product_id")
+    if not product_id:
+        return ConversationHandler.END
+
+    product = canboso.find_product(product_id)
+    name = product.get("product_name", product_id) if product else product_id
+    note_text = update.message.text.strip()
+
+    if note_text.lower() == "xoa":
+        await db.set_custom_note(product_id, name, "")
+        await update.message.reply_text(
+            f"✅ Đã xóa ghi chú cho <b>{name}</b>",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+    else:
+        await db.set_custom_note(product_id, name, note_text)
+        await update.message.reply_text(
+            f"✅ Đã lưu ghi chú cho <b>{name}</b>:\n\n📌 {note_text}",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+
+    context.user_data.pop("admin_note_product_id", None)
+    return ConversationHandler.END
+
+
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
@@ -413,7 +485,12 @@ def get_admin_conversation() -> ConversationHandler:
             ],
             MARKUP_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, markup_set),
+                CallbackQueryHandler(note_edit_prompt, pattern=r"^admin:note_edit:.*$"),
                 CallbackQueryHandler(markup_toggle, pattern=r"^admin:markup_toggle:.*$"),
+                CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
+            ],
+            NOTE_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, note_save),
                 CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
             ],
         },

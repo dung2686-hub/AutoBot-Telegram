@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS product_markups (
     markup_percent  INTEGER DEFAULT 20,           -- Per-product markup
     fixed_price     INTEGER DEFAULT 0,            -- Fixed sell price (0 = use markup %)
     is_active       INTEGER DEFAULT 1,
+    custom_note     TEXT DEFAULT '',               -- Shop note (appended below Bot B description)
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
