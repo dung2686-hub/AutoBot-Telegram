@@ -60,8 +60,10 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     code_id = match.group(2)
     
     if prefix == "NAP":
-        # Find pending deposit by ID (accept 'expired' within grace period for race condition)
+        # Find pending deposit by ID (accept 'expired' for late payments)
         deposit_id = int(code_id)
+        sender_name = data.get("senderName", "N/A")
+
         deposit_row = await _db._fetch_one(
             "SELECT * FROM deposits WHERE id = ? AND status IN ('pending', 'expired')",
             (deposit_id,)
@@ -76,13 +78,12 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             if completed_row and _bot_app and config.admin_chat_id:
                 try:
                     from src.utils.formatters import format_vnd, now_vn
-                    sender_name = data.get("senderName", "N/A")
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     alert_msg = (
                         f"⚠️ <b>CẢNH BÁO: Nạp tiền trùng!</b>\n\n"
                         f"Lệnh <b>NAP{deposit_id}</b> đã hoàn tất trước đó,\n"
                         f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
-                        f"👤 Người chuyển: <b>{sender_name}</b>\n"
+                        f"🏦 Người chuyển: <b>{sender_name}</b>\n"
                         f"📝 Nội dung: <code>{content}</code>\n"
                         f"🔖 Mã GD: <code>{reference_code}</code>\n"
                         f"⏰ {time_str}\n\n"
@@ -95,12 +96,13 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             return web.json_response({"success": True})
 
         deposit = dict(deposit_row)
-        user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (deposit["user_id"],))
+        user_row = await _db._fetch_one("SELECT telegram_id, full_name FROM users WHERE id = ?", (deposit["user_id"],))
         if not user_row: return web.json_response({"success": True})
         
         telegram_id = user_row["telegram_id"]
+        user_full_name = user_row["full_name"] or "N/A"
         
-        # WE CREDIT WHATEVER AMOUNT THEY TRANSFERRED
+        # Credit wallet (accept both pending and late payments)
         await _db.complete_deposit(deposit["id"], reference_code)
         new_balance = await _db.update_balance(telegram_id, amount)
         
@@ -121,7 +123,27 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
             except Exception as e:
                 logger.error("Failed to notify user %d: %s", telegram_id, e)
-        logger.info("Deposit completed: NAP %d", deposit_id)
+
+        # ADMIN: Notify every deposit with senderName for fraud detection
+        if _bot_app and config.admin_chat_id:
+            try:
+                from src.utils.formatters import format_vnd, now_vn
+                time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                name_mismatch = sender_name.upper().strip() not in user_full_name.upper().strip() and user_full_name.upper().strip() not in sender_name.upper().strip()
+                warning = "\n\n⚠️ <b>TÊN KHÔNG KHỚP!</b> Người chuyển khác chủ đơn." if name_mismatch else ""
+                late = " ⏱ (trễ)" if deposit['status'] != 'pending' else ""
+                admin_msg = (
+                    f"💰 <b>NẠP VÍ NAP{deposit_id}{late}</b>\n\n"
+                    f"👤 User: <b>{user_full_name}</b> (<code>{telegram_id}</code>)\n"
+                    f"🏦 Người chuyển: <b>{sender_name}</b>\n"
+                    f"💵 Số tiền: <b>{format_vnd(amount)}</b>\n"
+                    f"📊 Số dư mới: {format_vnd(new_balance)}\n"
+                    f"⏰ {time_str}{warning}"
+                )
+                await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+            except Exception:
+                pass
+        logger.info("Deposit completed: NAP %d (sender: %s)", deposit_id, sender_name)
 
     elif prefix == "MUA":
         order_id = int(code_id)
