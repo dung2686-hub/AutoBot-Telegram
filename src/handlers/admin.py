@@ -25,6 +25,8 @@ NOTE_INPUT = 14
 CUSTOM_NAME = 15
 CUSTOM_PRICE = 16
 CUSTOM_EDIT_PRICE = 17
+CUSTOM_EDIT_MENU = 18
+CUSTOM_EDIT_NAME = 19
 
 
 @error_handler
@@ -568,14 +570,17 @@ async def custom_add_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @error_handler
 @ensure_user
 @admin_only
-async def custom_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show product and ask for new price."""
+async def custom_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show edit menu with options to edit name or price."""
     query = update.callback_query
     await query.answer()
 
-    parts = query.data.split(":")
-    product_id = int(parts[2])
-    context.user_data["custom_edit_id"] = product_id
+    if update.callback_query.data.startswith("admin:custom_edit:"):
+        parts = query.data.split(":")
+        product_id = int(parts[2])
+        context.user_data["custom_edit_id"] = product_id
+    else:
+        product_id = context.user_data.get("custom_edit_id")
 
     db = context.bot_data["db"]
     product = await db.get_custom_product(product_id)
@@ -583,16 +588,94 @@ async def custom_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("❌ SP không tồn tại.")
         return ConversationHandler.END
 
-    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom")]]
+    keyboard = [
+        [InlineKeyboardButton("✏️ Sửa tên", callback_data="admin:custom_edit_name"),
+         InlineKeyboardButton("💰 Sửa giá", callback_data="admin:custom_edit_price")],
+        [InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:custom")]
+    ]
     await query.edit_message_text(
-        f"✏️ <b>Sửa giá: {product['name']}</b>\n"
+        f"✏️ <b>Sửa sản phẩm: {product['name']}</b>\n"
+        f"💰 Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
+        f"Bạn muốn thay đổi thông tin nào?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_edit_menu"
+    return CUSTOM_EDIT_MENU
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_name_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for new name."""
+    query = update.callback_query
+    await query.answer()
+
+    product_id = context.user_data.get("custom_edit_id")
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
+    await query.edit_message_text(
+        f"✏️ <b>Sửa tên: {product['name']}</b>\n\n"
+        f"Nhập tên mới cho sản phẩm này:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_edit_name"
+    return CUSTOM_EDIT_NAME
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_price_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for new price."""
+    query = update.callback_query
+    await query.answer()
+
+    product_id = context.user_data.get("custom_edit_id")
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
+    await query.edit_message_text(
+        f"💰 <b>Sửa giá: {product['name']}</b>\n"
         f"Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
         f"Nhập giá mới (VND):",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
-    context.user_data["active_conv"] = "admin_custom_edit"
+    context.user_data["active_conv"] = "admin_custom_edit_price"
     return CUSTOM_EDIT_PRICE
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save new name."""
+    if context.user_data.get("active_conv") != "admin_custom_edit_name":
+        return ConversationHandler.END
+
+    new_name = update.message.text.strip()
+    db = context.bot_data["db"]
+    product_id = context.user_data.pop("custom_edit_id", None)
+    
+    if not product_id:
+        return ConversationHandler.END
+
+    await db.update_custom_product(product_id, name=new_name)
+    product = await db.get_custom_product(product_id)
+
+    await update.message.reply_text(
+        f"✅ <b>Đã đổi tên thành:</b> {product['name']}",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
 
 
 @error_handler
@@ -600,7 +683,7 @@ async def custom_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
 @admin_only
 async def custom_edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save new price."""
-    if context.user_data.get("active_conv") != "admin_custom_edit":
+    if context.user_data.get("active_conv") != "admin_custom_edit_price":
         return ConversationHandler.END
 
     try:
@@ -660,7 +743,7 @@ def get_admin_conversation() -> ConversationHandler:
             CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
             CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
             CallbackQueryHandler(custom_add_start, pattern=r"^admin:custom_add$"),
-            CallbackQueryHandler(custom_edit_prompt, pattern=r"^admin:custom_edit:\d+$"),
+            CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit:\d+$"),
             CallbackQueryHandler(custom_delete, pattern=r"^admin:custom_del:\d+$"),
         ],
         states={
@@ -692,9 +775,18 @@ def get_admin_conversation() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_price),
                 CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
             ],
+            CUSTOM_EDIT_MENU: [
+                CallbackQueryHandler(custom_edit_name_prompt, pattern=r"^admin:custom_edit_name$"),
+                CallbackQueryHandler(custom_edit_price_prompt, pattern=r"^admin:custom_edit_price$"),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            ],
+            CUSTOM_EDIT_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_name),
+                CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
+            ],
             CUSTOM_EDIT_PRICE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_price),
-                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+                CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
             ],
         },
         fallbacks=[
