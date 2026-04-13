@@ -119,6 +119,8 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _lookup_user(update: Update, db, target_id: int) -> bool:
     """Shared lookup logic for checkuser. Returns True if user found."""
+    from src.utils.formatters import format_date
+
     user = await db.get_user(target_id)
     if not user:
         await update.message.reply_text(
@@ -131,7 +133,7 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
     full_name = user.get("full_name", "") or "N/A"
     balance = user.get("balance", 0)
     lang = user.get("language", "vi")
-    created = user.get("created_at", "N/A")
+    created = format_date(user.get("created_at", ""))
     referred_by = user.get("referred_by", None)
 
     text = (
@@ -153,14 +155,14 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
         for tx in txns:
             tx_amount = tx["amount"]
             sign = "+" if tx_amount > 0 else ""
-            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {tx.get('description', '')} | {tx.get('created_at', '')}\n"
+            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {tx.get('description', '')} | {format_date(tx.get('created_at', ''))}\n"
 
     deposits = await db.get_user_deposits(user["id"], limit=5)
     if deposits:
         text += "\n💳 <b>5 lệnh nạp gần nhất:</b>\n"
         for d in deposits:
             status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(d["status"], "❓")
-            text += f"  • NAP{d['id']} | {format_vnd(d['amount'])} | {status_icon} {d['status']} | {d.get('created_at', '')}\n"
+            text += f"  • NAP{d['id']} | {format_vnd(d['amount'])} | {status_icon} {d['status']} | {format_date(d.get('created_at', ''))}\n"
 
     orders = await db.get_user_orders(user["id"], limit=5)
     if orders:
