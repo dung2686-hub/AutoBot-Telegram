@@ -22,7 +22,7 @@ from src.services.canboso import CanbosoClient
 from src.services import sepay_webhook
 
 from src.handlers.start import start_command, main_menu_callback
-from src.handlers.shop import shop_menu, product_detail, quantity_change, buy_confirm, execute_purchase, qr_pay_setup, custom_shop_menu, custom_product_detail
+from src.handlers.shop import shop_menu, product_detail, quantity_change, buy_confirm, execute_purchase, qr_pay_setup, custom_product_detail
 from src.handlers.wallet import wallet_menu, transaction_history, get_deposit_conversation
 from src.handlers.profile import profile_menu
 from src.handlers.history import history_menu, history_detail
@@ -124,7 +124,6 @@ def build_application() -> Application:
     app.add_handler(CallbackQueryHandler(qr_pay_setup, pattern=r"^shop:qr_pay:"))
 
     # Custom Shop
-    app.add_handler(CallbackQueryHandler(custom_shop_menu, pattern=r"^menu:custom_shop$"))
     app.add_handler(CallbackQueryHandler(custom_product_detail, pattern=r"^custom:detail:"))
 
     # Wallet

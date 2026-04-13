@@ -75,6 +75,13 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
 
+    custom_products = await db.get_custom_products()
+    for p in custom_products:
+        btn_text = f"📦 {p['name']} — {format_vnd(p['price'])}"
+        keyboard.append([
+            InlineKeyboardButton(btn_text, callback_data=f"custom:detail:{p['id']}")
+        ])
+
     keyboard.append([
         InlineKeyboardButton(t("btn_back_menu", lang), callback_data="menu:main")
     ])
@@ -499,37 +506,6 @@ async def _do_execute_purchase(update, context, query, telegram_id):
 
 # ── Custom Products (Customer-facing) ─────────────────────
 
-@error_handler
-@ensure_user
-async def custom_shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show list of custom products for customers."""
-    query = update.callback_query
-    await query.answer()
-
-    db = context.bot_data["db"]
-    products = await db.get_custom_products()
-
-    if not products:
-        keyboard = [[InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:main")]]
-        await query.edit_message_text(
-            "📦 <b>Sản phẩm khác</b>\n\nHiện chưa có sản phẩm nào.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-        )
-        return
-
-    text = "📦 <b>Sản phẩm khác</b>\n\n👇 Chọn sản phẩm để xem chi tiết:"
-    keyboard = []
-    for p in products:
-        btn_text = f"📦 {p['name']} | {format_vnd(p['price'])}"
-        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"custom:detail:{p['id']}")])
-
-    keyboard.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:main")])
-
-    await query.edit_message_text(
-        text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
-    )
-
 
 @error_handler
 @ensure_user
@@ -565,7 +541,7 @@ async def custom_product_detail(update: Update, context: ContextTypes.DEFAULT_TY
         buttons.append([InlineKeyboardButton(
             "✈️ Telegram Admin", url=f"https://t.me/{config.support_telegram}"
         )])
-    buttons.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:custom_shop")])
+    buttons.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:shop")])
 
     await query.edit_message_text(
         text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML"

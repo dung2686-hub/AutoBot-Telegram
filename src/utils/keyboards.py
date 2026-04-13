@@ -8,7 +8,6 @@ def main_menu_keyboard(lang: str = "vi", admin: bool = False) -> InlineKeyboardM
     # Matching Bot B style
     k = [
         [InlineKeyboardButton("🛍️ Mua hàng", callback_data="menu:shop")],
-        [InlineKeyboardButton("📦 Sản phẩm khác", callback_data="menu:custom_shop")],
         [
             InlineKeyboardButton("👤 Hồ sơ", callback_data="menu:profile"),
             InlineKeyboardButton("🕒 Lịch sử mua", callback_data="menu:history"),
