@@ -129,8 +129,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             try:
                 from src.utils.formatters import format_vnd, now_vn
                 time_str = now_vn().strftime("%H:%M %d/%m/%Y")
-                name_mismatch = sender_name.upper().strip() not in user_full_name.upper().strip() and user_full_name.upper().strip() not in sender_name.upper().strip()
-                warning = "\n\n⚠️ <b>TÊN KHÔNG KHỚP!</b> Người chuyển khác chủ đơn." if name_mismatch else ""
                 late = " ⏱ (trễ)" if deposit['status'] != 'pending' else ""
                 admin_msg = (
                     f"💰 <b>NẠP VÍ NAP{deposit_id}{late}</b>\n\n"
@@ -138,7 +136,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     f"🏦 Người chuyển: <b>{sender_name}</b>\n"
                     f"💵 Số tiền: <b>{format_vnd(amount)}</b>\n"
                     f"📊 Số dư mới: {format_vnd(new_balance)}\n"
-                    f"⏰ {time_str}{warning}"
+                    f"⏰ {time_str}"
                 )
                 await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
             except Exception:
