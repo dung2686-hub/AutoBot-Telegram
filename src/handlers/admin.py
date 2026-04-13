@@ -269,6 +269,14 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     min_sell = max(cost + 10000, int(cost * 1.20))
     
+    from src.handlers.shop import calc_sell_price
+    current_sell_price = await calc_sell_price(db, product_id, cost)
+    m = await db.get_markup(product_id, config.default_markup_percent)
+    if m["fixed_price"] > 0:
+        price_mode_str = "Cố định"
+    else:
+        price_mode_str = f"Markup {m['markup_percent']}%"
+    
     current_note = await db.get_custom_note(product_id)
     note_preview = f"\n📌 Ghi chú: <i>{current_note[:80]}{'...' if len(current_note) > 80 else ''}</i>" if current_note else "\n📌 Ghi chú: <i>(chưa có)</i>"
 
@@ -276,7 +284,8 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Bạn đang đổi giá cho: <b>{name}</b>\n"
         f"Trạng thái: <b>{status_text}</b>\n"
         f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
-        f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>"
+        f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>\n"
+        f"💵 Giá bán HIỆN TẠI: <b>{format_vnd(current_sell_price)}</b> ({price_mode_str})"
         f"{note_preview}\n\n"
         f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
         f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>={min_sell}</code>):"
