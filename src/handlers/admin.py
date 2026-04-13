@@ -29,6 +29,7 @@ CUSTOM_EDIT_PRICE = 17
 CUSTOM_EDIT_MENU = 18
 CUSTOM_EDIT_NAME = 19
 CHECKUSER_INPUT = 20
+QUICKCREDIT_INPUT = 21
 
 
 @error_handler
@@ -169,7 +170,10 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
             text += f"  • MUA{o['id']} | {o.get('product_name', 'N/A')} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
 
     keyboard = [
-        [InlineKeyboardButton("💳 Cộng tiền", callback_data="admin:credit")],
+        [
+            InlineKeyboardButton("💳 Cộng tiền", callback_data=f"admin:quickcredit:{target_id}"),
+            InlineKeyboardButton("➖ Trừ tiền", callback_data=f"admin:quickdebit:{target_id}"),
+        ],
         [InlineKeyboardButton("⬅️ Admin Panel", callback_data="admin:refresh")],
     ]
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -219,6 +223,104 @@ async def checkuser_receive_id(update: Update, context: ContextTypes.DEFAULT_TYP
 
     db = context.bot_data["db"]
     await _lookup_user(update, db, target_id)
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def quickcredit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start quick credit/debit for a specific user from checkuser result."""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    target_id = int(parts[2])
+    is_debit = "quickdebit" in query.data
+
+    context.user_data["quickcredit_target"] = target_id
+    context.user_data["quickcredit_debit"] = is_debit
+
+    action = "trừ" if is_debit else "cộng"
+    emoji = "➖" if is_debit else "💳"
+
+    db = context.bot_data["db"]
+    user = await db.get_user(target_id)
+    name = user.get("full_name", "N/A") if user else "N/A"
+    balance = user.get("balance", 0) if user else 0
+
+    keyboard = [[InlineKeyboardButton("❌ Hủy", callback_data="admin:refresh")]]
+    await query.edit_message_text(
+        f"{emoji} <b>{action.upper()} tiền cho user</b>\n\n"
+        f"👤 {name} (<code>{target_id}</code>)\n"
+        f"💰 Số dư hiện tại: <b>{format_vnd(balance)}</b>\n\n"
+        f"Nhập số tiền muốn <b>{action}</b>:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_quickcredit"
+    return QUICKCREDIT_INPUT
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def quickcredit_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Execute quick credit/debit."""
+    if context.user_data.get("active_conv") != "admin_quickcredit":
+        return ConversationHandler.END
+
+    target_id = context.user_data.get("quickcredit_target")
+    is_debit = context.user_data.get("quickcredit_debit", False)
+    if not target_id:
+        return ConversationHandler.END
+
+    raw = update.message.text.strip().replace(".", "").replace(",", "").replace("đ", "")
+    try:
+        amount = int(raw)
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ Số tiền không hợp lệ. Nhập số dương:", parse_mode="HTML")
+        return QUICKCREDIT_INPUT
+
+    db = context.bot_data["db"]
+    user = await db.get_user(target_id)
+    if not user:
+        await update.message.reply_text("❌ User không tồn tại.")
+        return ConversationHandler.END
+
+    actual_amount = -amount if is_debit else amount
+    action = "trừ" if is_debit else "cộng"
+    new_balance = await db.update_balance(target_id, actual_amount)
+
+    tx_type = "admin_debit" if is_debit else "admin_credit"
+    await db.add_transaction(
+        user_id=user["id"], tx_type=tx_type, amount=actual_amount,
+        balance_after=new_balance, description=f"Admin {action} tiền",
+    )
+
+    emoji = "➖" if is_debit else "✅"
+    await update.message.reply_text(
+        f"{emoji} Đã <b>{action}</b> <b>{format_vnd(amount)}</b> cho user <code>{target_id}</code>\n"
+        f"💰 Số dư mới: <b>{format_vnd(new_balance)}</b>",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+
+    # Notify user
+    try:
+        if is_debit:
+            msg = f"➖ Admin đã trừ <b>{format_vnd(amount)}</b> từ ví.\n💰 Số dư: <b>{format_vnd(new_balance)}</b>"
+        else:
+            msg = t("deposit_success", user.get("language", "vi"), amount=format_vnd(amount), balance=format_vnd(new_balance))
+        await context.bot.send_message(chat_id=target_id, text=msg, parse_mode="HTML")
+    except Exception:
+        pass
+
+    context.user_data.pop("quickcredit_target", None)
+    context.user_data.pop("quickcredit_debit", None)
     context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
@@ -906,6 +1008,7 @@ def get_admin_conversation() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
             CommandHandler("checkuser", checkuser_command),
+            CallbackQueryHandler(quickcredit_start, pattern=r"^admin:quick(credit|debit):\d+$"),
             CallbackQueryHandler(broadcast_start, pattern=r"^admin:broadcast$"),
             CallbackQueryHandler(credit_start, pattern=r"^admin:credit$"),
             CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
@@ -958,6 +1061,10 @@ def get_admin_conversation() -> ConversationHandler:
             ],
             CHECKUSER_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, checkuser_receive_id),
+            ],
+            QUICKCREDIT_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, quickcredit_execute),
+                CallbackQueryHandler(admin_cancel, pattern=r"^admin:refresh$"),
             ],
         },
         fallbacks=[
