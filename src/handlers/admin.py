@@ -67,6 +67,55 @@ async def admin_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await admin_command(update, context)
 
 
+@error_handler
+@ensure_user
+@admin_only
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: /backup — instantly download DB file."""
+    import shutil
+    from pathlib import Path
+    from datetime import datetime
+
+    db = context.bot_data["db"]
+    db_path = Path(db.db_path)
+
+    if not db_path.exists():
+        await update.message.reply_text("❌ File DB không tồn tại.")
+        return
+
+    await update.message.reply_text("⏳ Đang chuẩn bị backup...")
+
+    try:
+        # WAL checkpoint for clean backup
+        await db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = db_path.parent / f"bot_backup_{timestamp}.db"
+        shutil.copy2(str(db_path), str(backup_path))
+
+        users_count = await db.count_users()
+        revenue = await db.get_total_revenue()
+        from src.utils.formatters import format_vnd
+
+        with open(str(backup_path), "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                caption=(
+                    f"🗄 <b>Manual Backup</b>\n"
+                    f"📅 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
+                    f"👥 Users: {users_count}\n"
+                    f"💰 Revenue: {format_vnd(revenue)}\n"
+                    f"📦 Size: {backup_path.stat().st_size / 1024:.1f} KB"
+                ),
+                parse_mode="HTML",
+            )
+
+        backup_path.unlink(missing_ok=True)
+    except Exception as e:
+        logger.error("Manual backup failed: %s", e)
+        await update.message.reply_text(f"❌ Backup thất bại: {e}")
+
+
 async def _lookup_user(update: Update, db, target_id: int) -> bool:
     """Shared lookup logic for checkuser. Returns True if user found."""
     user = await db.get_user(target_id)
