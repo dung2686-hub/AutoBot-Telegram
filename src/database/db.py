@@ -142,22 +142,8 @@ class Database:
         if not user or not user["referred_by"]:
             return 0
             
-        # Check if this user already has any completed orders
-        # If count > 1, it means this is not their first completed order (assuming we call this after marking the current order as completed, or if we call it before, count > 0)
-        # Let's say we call it AFTER the current order is marked completed. So count should be exactly 1.
-        # But wait, CANBOSO purchase might not mark it completed immediately in our db if we don't manage it right, but actually we do.
-        # Let's just check how many completed orders they have.
-        count_row = await self._fetch_one("SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND status = 'completed'", (user_id,))
-        count = count_row["cnt"] if count_row else 0
-        
-        # If count == 1 (this is their very first completed order) or count == 0 (if called before marking)
-        # Actually calling it exactly once is better. Let's just use a special transaction type "referral_bonus" to check if we already paid.
-        paid_row = await self._fetch_one("SELECT COUNT(*) as cnt FROM transactions WHERE user_id = ? AND type = 'referral_bonus' AND description LIKE '%từ user {}%'".format(user_id), (user["referred_by"],))
-        # Wait, the bonus goes to the referrer!
-        # So user_id = referrer, description contains the new user's id.
-        referrer_id = user["referred_by"]
-        
         # Check if referrer already received bonus for this user
+        referrer_id = user["referred_by"]
         check_bonus = await self._fetch_one(
             "SELECT id FROM transactions WHERE user_id = ? AND type = 'referral_bonus' AND reference_id = ?",
             (referrer_id, str(user_id))
