@@ -68,6 +68,29 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         )
             
         if not deposit_row:
+            # Check if it's a duplicate payment for already-completed deposit
+            completed_row = await _db._fetch_one(
+                "SELECT * FROM deposits WHERE id = ? AND status = 'completed'",
+                (deposit_id,)
+            )
+            if completed_row and _bot_app and config.admin_chat_id:
+                try:
+                    from src.utils.formatters import format_vnd, now_vn
+                    sender_name = data.get("senderName", "N/A")
+                    time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                    alert_msg = (
+                        f"⚠️ <b>CẢNH BÁO: Nạp tiền trùng!</b>\n\n"
+                        f"Lệnh <b>NAP{deposit_id}</b> đã hoàn tất trước đó,\n"
+                        f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
+                        f"👤 Người chuyển: <b>{sender_name}</b>\n"
+                        f"📝 Nội dung: <code>{content}</code>\n"
+                        f"🔖 Mã GD: <code>{reference_code}</code>\n"
+                        f"⏰ {time_str}\n\n"
+                        f"💡 Tiền đã vào bank. Kiểm tra sao kê để xử lý."
+                    )
+                    await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=alert_msg, parse_mode="HTML")
+                except Exception as e:
+                    logger.error("Failed to alert admin about duplicate NAP payment: %s", e)
             logger.warning("SePay webhook: no valid deposit found for NAP %d", deposit_id)
             return web.json_response({"success": True})
 
@@ -104,8 +127,30 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         order_id = int(code_id)
         order = await _db.get_order(order_id)
         
-        if not order or order["status"] == "completed":
-            logger.warning("SePay MUA webhook: order %d not found or already completed", order_id)
+        if not order:
+            logger.warning("SePay MUA webhook: order %d not found", order_id)
+            return web.json_response({"success": True})
+
+        if order["status"] == "completed":
+            logger.warning("SePay MUA webhook: order %d already completed, duplicate payment of %d", order_id, amount)
+            if _bot_app and config.admin_chat_id:
+                try:
+                    from src.utils.formatters import format_vnd, now_vn
+                    sender_name = data.get("senderName", "N/A")
+                    time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                    alert_msg = (
+                        f"⚠️ <b>CẢNH BÁO: Thanh toán trùng!</b>\n\n"
+                        f"Đơn <b>MUA{order_id}</b> đã hoàn tất trước đó,\n"
+                        f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
+                        f"👤 Người chuyển: <b>{sender_name}</b>\n"
+                        f"📝 Nội dung: <code>{content}</code>\n"
+                        f"🔖 Mã GD: <code>{reference_code}</code>\n"
+                        f"⏰ {time_str}\n\n"
+                        f"💡 Tiền đã vào bank. Kiểm tra sao kê để xử lý."
+                    )
+                    await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=alert_msg, parse_mode="HTML")
+                except Exception as e:
+                    logger.error("Failed to alert admin about duplicate MUA payment: %s", e)
             return web.json_response({"success": True})
 
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
