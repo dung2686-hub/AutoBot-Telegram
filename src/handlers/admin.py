@@ -22,6 +22,9 @@ CREDIT_INPUT = 11
 MARKUP_INPUT = 12
 MARKUP_SELECT = 13
 NOTE_INPUT = 14
+CUSTOM_NAME = 15
+CUSTOM_PRICE = 16
+CUSTOM_EDIT_PRICE = 17
 
 
 @error_handler
@@ -465,12 +468,200 @@ async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+# ── Custom Products Admin ─────────────────────────────────────
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show all custom products for admin."""
+    query = update.callback_query
+    await query.answer()
+
+    db = context.bot_data["db"]
+    products = await db.get_custom_products()
+
+    text = "📦 <b>Sản phẩm Custom</b>\n\n"
+    keyboard = []
+
+    if products:
+        for p in products:
+            text += f"• <b>{p['name']}</b> — {format_vnd(p['price'])}\n"
+            keyboard.append([
+                InlineKeyboardButton(f"✏️ {p['name']}", callback_data=f"admin:custom_edit:{p['id']}"),
+                InlineKeyboardButton("❌", callback_data=f"admin:custom_del:{p['id']}"),
+            ])
+    else:
+        text += "Chưa có sản phẩm nào.\n"
+
+    keyboard.append([InlineKeyboardButton("➕ Thêm SP mới", callback_data="admin:custom_add")])
+    keyboard.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:refresh")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start adding a custom product — ask for name."""
+    query = update.callback_query
+    await query.answer()
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom")]]
+    await query.edit_message_text(
+        "➕ <b>Thêm sản phẩm mới</b>\n\nNhập <b>tên sản phẩm</b>:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_add"
+    return CUSTOM_NAME
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive product name, ask for price."""
+    if context.user_data.get("active_conv") != "admin_custom_add":
+        return ConversationHandler.END
+
+    name = update.message.text.strip()
+    context.user_data["custom_product_name"] = name
+
+    await update.message.reply_text(
+        f"Tên: <b>{name}</b>\n\nNhập <b>giá bán</b> (VND, ví dụ: <code>300000</code>):",
+        parse_mode="HTML",
+    )
+    return CUSTOM_PRICE
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive price and save product."""
+    if context.user_data.get("active_conv") != "admin_custom_add":
+        return ConversationHandler.END
+
+    try:
+        price = int(update.message.text.strip().replace(",", "").replace(".", ""))
+        if price <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ Giá không hợp lệ. Nhập số dương, ví dụ: <code>300000</code>", parse_mode="HTML")
+        return CUSTOM_PRICE
+
+    db = context.bot_data["db"]
+    name = context.user_data.pop("custom_product_name", "")
+    product = await db.add_custom_product(name, price)
+
+    await update.message.reply_text(
+        f"✅ Đã thêm: <b>{product['name']}</b>\n💰 Giá: <b>{format_vnd(product['price'])}</b>",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show product and ask for new price."""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    product_id = int(parts[2])
+    context.user_data["custom_edit_id"] = product_id
+
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+    if not product:
+        await query.edit_message_text("❌ SP không tồn tại.")
+        return ConversationHandler.END
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom")]]
+    await query.edit_message_text(
+        f"✏️ <b>Sửa giá: {product['name']}</b>\n"
+        f"Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
+        f"Nhập giá mới (VND):",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_edit"
+    return CUSTOM_EDIT_PRICE
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save new price."""
+    if context.user_data.get("active_conv") != "admin_custom_edit":
+        return ConversationHandler.END
+
+    try:
+        price = int(update.message.text.strip().replace(",", "").replace(".", ""))
+        if price <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ Giá không hợp lệ.", parse_mode="HTML")
+        return CUSTOM_EDIT_PRICE
+
+    db = context.bot_data["db"]
+    product_id = context.user_data.pop("custom_edit_id", None)
+    if not product_id:
+        return ConversationHandler.END
+
+    product = await db.get_custom_product(product_id)
+    await db.update_custom_product(product_id, price=price)
+
+    await update.message.reply_text(
+        f"✅ <b>{product['name']}</b>\nGiá mới: <b>{format_vnd(price)}</b>",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a custom product."""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    product_id = int(parts[2])
+
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+    if product:
+        await db.delete_custom_product(product_id)
+        await query.edit_message_text(
+            f"🗑 Đã xóa: <b>{product['name']}</b>",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+    else:
+        await query.edit_message_text("❌ SP không tồn tại.")
+
+
 def get_admin_conversation() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
             CallbackQueryHandler(broadcast_start, pattern=r"^admin:broadcast$"),
             CallbackQueryHandler(credit_start, pattern=r"^admin:credit$"),
             CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
+            CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            CallbackQueryHandler(custom_add_start, pattern=r"^admin:custom_add$"),
+            CallbackQueryHandler(custom_edit_prompt, pattern=r"^admin:custom_edit:\d+$"),
+            CallbackQueryHandler(custom_delete, pattern=r"^admin:custom_del:\d+$"),
         ],
         states={
             BROADCAST_MESSAGE: [
@@ -492,6 +683,18 @@ def get_admin_conversation() -> ConversationHandler:
             NOTE_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, note_save),
                 CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
+            ],
+            CUSTOM_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_name),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            ],
+            CUSTOM_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_price),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            ],
+            CUSTOM_EDIT_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_price),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
             ],
         },
         fallbacks=[

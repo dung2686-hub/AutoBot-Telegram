@@ -415,6 +415,36 @@ class Database:
         rows = await self._fetch_all("SELECT telegram_id FROM users")
         return [r["telegram_id"] for r in rows]
 
+    # ── Custom Products ───────────────────────────────────
+
+    async def add_custom_product(self, name: str, price: int) -> dict:
+        cursor = await self.conn.execute(
+            "INSERT INTO custom_products (name, price) VALUES (?, ?)",
+            (name, price),
+        )
+        await self.conn.commit()
+        row = await self._fetch_one("SELECT * FROM custom_products WHERE id = ?", (cursor.lastrowid,))
+        return dict(row)
+
+    async def get_custom_products(self) -> list[dict]:
+        rows = await self._fetch_all("SELECT * FROM custom_products WHERE is_active = 1 ORDER BY id DESC")
+        return [dict(r) for r in rows]
+
+    async def get_custom_product(self, product_id: int) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM custom_products WHERE id = ?", (product_id,))
+        return dict(row) if row else None
+
+    async def update_custom_product(self, product_id: int, name: str = None, price: int = None):
+        if name is not None:
+            await self.conn.execute("UPDATE custom_products SET name = ? WHERE id = ?", (name, product_id))
+        if price is not None:
+            await self.conn.execute("UPDATE custom_products SET price = ? WHERE id = ?", (price, product_id))
+        await self.conn.commit()
+
+    async def delete_custom_product(self, product_id: int):
+        await self.conn.execute("DELETE FROM custom_products WHERE id = ?", (product_id,))
+        await self.conn.commit()
+
     # ── Helpers ────────────────────────────────────────────
 
     async def _fetch_one(self, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
