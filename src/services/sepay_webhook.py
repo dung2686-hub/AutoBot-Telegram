@@ -276,6 +276,21 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                             await _bot_app.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
                         except Exception:
                             pass
+                    # Notify admin about referral bonus
+                    if config.admin_chat_id:
+                        try:
+                            referrer_name = (await _db.get_user(referrer["telegram_id"])).get("full_name", "N/A") if referrer else "N/A"
+                            buyer_name = user.get("full_name", "N/A") if user else "N/A"
+                            admin_ref_msg = (
+                                f"🎁 <b>Referral Bonus</b>\n\n"
+                                f"👤 Người nhận: <b>{referrer_name}</b>\n"
+                                f"👥 Từ khách: <b>{buyer_name}</b> (đơn MUA{order_id})\n"
+                                f"💰 Bonus: <b>{format_vnd(bonus)}</b> (10%)\n"
+                                f"📦 Đơn: {format_vnd(order['total_amount'])}"
+                            )
+                            await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_ref_msg, parse_mode="HTML")
+                        except Exception:
+                            pass
                 if _bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,

@@ -420,6 +420,19 @@ async def _do_execute_purchase(update, context, query, telegram_id):
                 from src.utils.formatters import format_vnd as _fv
                 msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{_fv(bonus)}</b> vào ví."
                 await context.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
+            # Notify admin about referral bonus
+            if config.admin_chat_id:
+                referrer_user = await db.get_user(referrer["telegram_id"]) if referrer else None
+                referrer_name = referrer_user.get("full_name", "N/A") if referrer_user else "N/A"
+                buyer_name = user.get("full_name", "N/A")
+                admin_ref_msg = (
+                    f"🎁 <b>Referral Bonus</b>\n\n"
+                    f"👤 Người nhận: <b>{referrer_name}</b>\n"
+                    f"👥 Từ khách: <b>{buyer_name}</b>\n"
+                    f"💰 Bonus: <b>{format_vnd(bonus)}</b> (10%)\n"
+                    f"📦 Đơn: {format_vnd(total)}"
+                )
+                await context.bot.send_message(chat_id=config.admin_chat_id, text=admin_ref_msg, parse_mode="HTML")
     except Exception as ref_err:
         logger.warning("Referral bonus error (non-critical): %s", ref_err)
 
