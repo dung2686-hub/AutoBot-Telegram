@@ -65,6 +65,85 @@ async def admin_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await admin_command(update, context)
 
 
+@error_handler
+@ensure_user
+@admin_only
+async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: /checkuser <telegram_id> — lookup any user's wallet & history."""
+    if not context.args:
+        await update.message.reply_text(
+            "📋 <b>Cách dùng:</b>\n<code>/checkuser 123456789</code>\n\n"
+            "Nhập Telegram ID của user cần kiểm tra.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Telegram ID phải là số.", parse_mode="HTML")
+        return
+
+    db = context.bot_data["db"]
+    user = await db.get_user(target_id)
+    if not user:
+        await update.message.reply_text(f"❌ Không tìm thấy user với Telegram ID <code>{target_id}</code>.", parse_mode="HTML")
+        return
+
+    # Basic info
+    username = user.get("username", "") or "N/A"
+    full_name = user.get("full_name", "") or "N/A"
+    balance = user.get("balance", 0)
+    lang = user.get("language", "vi")
+    created = user.get("created_at", "N/A")
+    referred_by = user.get("referred_by", None)
+
+    text = (
+        f"👤 <b>THÔNG TIN USER</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Telegram ID: <code>{target_id}</code>\n"
+        f"📛 Tên: <b>{full_name}</b>\n"
+        f"🔗 Username: @{username}\n"
+        f"💰 Số dư ví: <b>{format_vnd(balance)}</b>\n"
+        f"🌐 Ngôn ngữ: {lang}\n"
+        f"📅 Tham gia: {created}\n"
+    )
+    if referred_by:
+        text += f"🤝 Giới thiệu bởi: user_id #{referred_by}\n"
+
+    # Recent transactions (5)
+    txns = await db.get_user_transactions(user["id"], limit=5)
+    if txns:
+        text += "\n📜 <b>5 giao dịch gần nhất:</b>\n"
+        for tx in txns:
+            tx_amount = tx["amount"]
+            sign = "+" if tx_amount > 0 else ""
+            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {tx.get('description', '')} | {tx.get('created_at', '')}\n"
+
+    # Recent deposits (5)
+    deposits = await db.get_user_deposits(user["id"], limit=5)
+    if deposits:
+        text += "\n💳 <b>5 lệnh nạp gần nhất:</b>\n"
+        for d in deposits:
+            status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(d["status"], "❓")
+            text += f"  • NAP{d['id']} | {format_vnd(d['amount'])} | {status_icon} {d['status']} | {d.get('created_at', '')}\n"
+
+    # Recent orders (5)
+    orders = await db.get_user_orders(user["id"], limit=5)
+    if orders:
+        text += "\n🛒 <b>5 đơn hàng gần nhất:</b>\n"
+        for o in orders:
+            status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(o["status"], "❓")
+            text += f"  • MUA{o['id']} | {o.get('product_name', 'N/A')} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
+
+    # Admin action buttons
+    keyboard = [
+        [InlineKeyboardButton("💳 Cộng tiền", callback_data="admin:credit")],
+        [InlineKeyboardButton("⬅️ Admin Panel", callback_data="admin:refresh")],
+    ]
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
 # ── Broadcast ─────────────────────────────────────────────
 
 @error_handler

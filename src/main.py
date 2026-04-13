@@ -28,7 +28,7 @@ from src.handlers.profile import profile_menu
 from src.handlers.history import history_menu, history_detail
 from src.handlers.support import get_support_conversation
 from src.handlers.language import language_menu, language_set
-from src.handlers.admin import admin_command, admin_refresh, get_admin_conversation
+from src.handlers.admin import admin_command, admin_refresh, checkuser_command, get_admin_conversation
 
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -65,6 +65,7 @@ async def post_init(application: Application):
     await application.bot.set_my_commands([
         BotCommand("start", "Bắt đầu và xem menu"),
         BotCommand("admin", "Admin dashboard"),
+        BotCommand("checkuser", "Kiểm tra user (admin)"),
     ])
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
@@ -106,6 +107,7 @@ def build_application() -> Application:
     # ── Command Handlers ──────────────────────────────────
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_command))
+    app.add_handler(CommandHandler("checkuser", checkuser_command))
 
     # ── Callback Query Handlers ───────────────────────────
     # Main menu
