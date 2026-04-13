@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
+    CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
     filters,
@@ -27,6 +28,7 @@ CUSTOM_PRICE = 16
 CUSTOM_EDIT_PRICE = 17
 CUSTOM_EDIT_MENU = 18
 CUSTOM_EDIT_NAME = 19
+CHECKUSER_INPUT = 20
 
 
 @error_handler
@@ -65,32 +67,16 @@ async def admin_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await admin_command(update, context)
 
 
-@error_handler
-@ensure_user
-@admin_only
-async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command: /checkuser <telegram_id> — lookup any user's wallet & history."""
-    if not context.args:
-        await update.message.reply_text(
-            "📋 <b>Cách dùng:</b>\n<code>/checkuser 123456789</code>\n\n"
-            "Nhập Telegram ID của user cần kiểm tra.",
-            parse_mode="HTML",
-        )
-        return
-
-    try:
-        target_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ Telegram ID phải là số.", parse_mode="HTML")
-        return
-
-    db = context.bot_data["db"]
+async def _lookup_user(update: Update, db, target_id: int) -> bool:
+    """Shared lookup logic for checkuser. Returns True if user found."""
     user = await db.get_user(target_id)
     if not user:
-        await update.message.reply_text(f"❌ Không tìm thấy user với Telegram ID <code>{target_id}</code>.", parse_mode="HTML")
-        return
+        await update.message.reply_text(
+            f"❌ Không tìm thấy user với Telegram ID <code>{target_id}</code>.",
+            parse_mode="HTML",
+        )
+        return False
 
-    # Basic info
     username = user.get("username", "") or "N/A"
     full_name = user.get("full_name", "") or "N/A"
     balance = user.get("balance", 0)
@@ -111,7 +97,6 @@ async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if referred_by:
         text += f"🤝 Giới thiệu bởi: user_id #{referred_by}\n"
 
-    # Recent transactions (5)
     txns = await db.get_user_transactions(user["id"], limit=5)
     if txns:
         text += "\n📜 <b>5 giao dịch gần nhất:</b>\n"
@@ -120,7 +105,6 @@ async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sign = "+" if tx_amount > 0 else ""
             text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {tx.get('description', '')} | {tx.get('created_at', '')}\n"
 
-    # Recent deposits (5)
     deposits = await db.get_user_deposits(user["id"], limit=5)
     if deposits:
         text += "\n💳 <b>5 lệnh nạp gần nhất:</b>\n"
@@ -128,7 +112,6 @@ async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(d["status"], "❓")
             text += f"  • NAP{d['id']} | {format_vnd(d['amount'])} | {status_icon} {d['status']} | {d.get('created_at', '')}\n"
 
-    # Recent orders (5)
     orders = await db.get_user_orders(user["id"], limit=5)
     if orders:
         text += "\n🛒 <b>5 đơn hàng gần nhất:</b>\n"
@@ -136,12 +119,59 @@ async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(o["status"], "❓")
             text += f"  • MUA{o['id']} | {o.get('product_name', 'N/A')} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
 
-    # Admin action buttons
     keyboard = [
         [InlineKeyboardButton("💳 Cộng tiền", callback_data="admin:credit")],
         [InlineKeyboardButton("⬅️ Admin Panel", callback_data="admin:refresh")],
     ]
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    return True
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def checkuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: /checkuser [telegram_id] — supports inline or conversational."""
+    # If args provided inline, lookup immediately
+    if context.args:
+        try:
+            target_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ Telegram ID phải là số.", parse_mode="HTML")
+            return ConversationHandler.END
+        db = context.bot_data["db"]
+        await _lookup_user(update, db, target_id)
+        return ConversationHandler.END
+
+    # No args — ask for ID (conversational)
+    await update.message.reply_text(
+        "🔍 <b>Kiểm tra thông tin user</b>\n\n"
+        "Gửi <b>Telegram ID</b> của user cần kiểm tra:",
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_checkuser"
+    return CHECKUSER_INPUT
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def checkuser_receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive Telegram ID from admin after /checkuser prompt."""
+    if context.user_data.get("active_conv") != "admin_checkuser":
+        return ConversationHandler.END
+
+    raw = update.message.text.strip()
+    try:
+        target_id = int(raw)
+    except ValueError:
+        await update.message.reply_text("❌ Telegram ID phải là số. Thử lại:", parse_mode="HTML")
+        return CHECKUSER_INPUT
+
+    db = context.bot_data["db"]
+    await _lookup_user(update, db, target_id)
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
 
 
 # ── Broadcast ─────────────────────────────────────────────
@@ -826,6 +856,7 @@ async def custom_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def get_admin_conversation() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
+            CommandHandler("checkuser", checkuser_command),
             CallbackQueryHandler(broadcast_start, pattern=r"^admin:broadcast$"),
             CallbackQueryHandler(credit_start, pattern=r"^admin:credit$"),
             CallbackQueryHandler(markup_menu, pattern=r"^admin:markup$"),
@@ -875,6 +906,9 @@ def get_admin_conversation() -> ConversationHandler:
             CUSTOM_EDIT_PRICE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_price),
                 CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
+            ],
+            CHECKUSER_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, checkuser_receive_id),
             ],
         },
         fallbacks=[
