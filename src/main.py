@@ -238,7 +238,9 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
             # WAL checkpoint — flush WAL to main DB for clean backup
             await db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            from src.utils.formatters import now_vn
+            vn_now = now_vn()
+            timestamp = vn_now.strftime("%Y%m%d_%H%M")
             backup_path = db_path.parent / f"bot_backup_{timestamp}.db"
             shutil.copy2(str(db_path), str(backup_path))
 
@@ -251,7 +253,7 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                     document=f,
                     caption=(
                         f"🗄 <b>Auto Backup</b>\n"
-                        f"📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+                        f"📅 {vn_now.strftime('%d/%m/%Y %H:%M')}\n"
                         f"👥 Users: {users_count}\n"
                         f"💰 Revenue: {revenue:,}đ\n"
                         f"📦 Size: {backup_path.stat().st_size / 1024:.1f} KB"
