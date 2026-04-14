@@ -19,12 +19,12 @@ def _round_up_1000(price: int) -> int:
 
 
 async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
-    """Calculate sell price from markup settings. Guarantees min 10k or 20% profit."""
+    """Calculate sell price from markup settings. Guarantees min 10k or 30% profit."""
     m = await db.get_markup(product_id, config.default_markup_percent)
     markup_price = int(cost_price * (1 + m["markup_percent"] / 100))
     
-    # Đảm bảo lãi tối thiểu 10k HOẶC 20%, tùy cái nào lớn hơn
-    min_sell = max(cost_price + 10000, int(cost_price * 1.20))
+    # Đảm bảo lãi tối thiểu 15k HOẶC 30%, tùy cái nào lớn hơn
+    min_sell = max(cost_price + 15000, int(cost_price * 1.30))
     markup_price = max(markup_price, min_sell)
     
     if m["fixed_price"] > 0:
