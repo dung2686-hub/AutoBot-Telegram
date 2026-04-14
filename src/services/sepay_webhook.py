@@ -4,6 +4,7 @@ import logging
 from aiohttp import web
 
 from src.config import config
+from src.utils.formatters import esc
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,52 @@ def set_dependencies(bot_app, db):
     global _bot_app, _db
     _bot_app = bot_app
     _db = db
+
+
+async def _claim_webhook(reference_code: str, prefix: str, code_id: str, amount: int) -> bool:
+    """Claim a webhook for processing. Returns True if claimed successfully."""
+    if not reference_code:
+        return True
+    cursor = await _db.conn.execute(
+        "INSERT OR IGNORE INTO processed_webhooks (reference_code, prefix, code_id, amount, status) "
+        "VALUES (?, ?, ?, ?, 'processing')",
+        (reference_code, prefix, int(code_id), amount),
+    )
+    await _db.conn.commit()
+    if cursor.rowcount == 1:
+        return True
+    existing = await _db._fetch_one(
+        "SELECT status FROM processed_webhooks WHERE reference_code = ?", (reference_code,)
+    )
+    if not existing:
+        return False
+    if existing["status"] == "completed":
+        logger.info("Duplicate webhook ignored (ref=%s)", reference_code)
+        return False
+    if existing["status"] == "processing":
+        logger.info("Webhook already processing (ref=%s)", reference_code)
+        return False
+    # status == 'failed' -> reclaim
+    reclaim = await _db.conn.execute(
+        "UPDATE processed_webhooks SET status = 'processing', processed_at = CURRENT_TIMESTAMP "
+        "WHERE reference_code = ? AND status = 'failed'", (reference_code,)
+    )
+    await _db.conn.commit()
+    return reclaim.rowcount == 1
+
+
+async def _mark_webhook(reference_code: str, status: str):
+    """Mark webhook as completed or failed."""
+    if not reference_code:
+        return
+    try:
+        await _db.conn.execute(
+            "UPDATE processed_webhooks SET status = ? WHERE reference_code = ?",
+            (status, reference_code),
+        )
+        await _db.conn.commit()
+    except Exception:
+        logger.warning("Failed to mark webhook %s ref=%s", status, reference_code)
 
 
 async def handle_sepay_webhook(request: web.Request) -> web.Response:
@@ -58,11 +105,16 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
 
     prefix = match.group(1)
     code_id = match.group(2)
-    
+
+    # -- Idempotency guard --
+    claimed = await _claim_webhook(reference_code, prefix, code_id, amount)
+    if not claimed:
+        return web.json_response({"success": True})
+
     if prefix == "NAP":
         # Find pending deposit by ID (accept 'expired' for late payments)
         deposit_id = int(code_id)
-        sender_name = data.get("senderName", "N/A")
+        sender_name = esc(data.get("senderName", "N/A"))
 
         deposit_row = await _db._fetch_one(
             "SELECT * FROM deposits WHERE id = ? AND status IN ('pending', 'expired')",
@@ -84,8 +136,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         f"Lệnh <b>NAP{deposit_id}</b> đã hoàn tất trước đó,\n"
                         f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
                         f"🏦 Người chuyển: <b>{sender_name}</b>\n"
-                        f"📝 Nội dung: <code>{content}</code>\n"
-                        f"🔖 Mã GD: <code>{reference_code}</code>\n"
+                        f"📝 Nội dung: <code>{esc(content)}</code>\n"
+                        f"🔖 Mã GD: <code>{esc(reference_code)}</code>\n"
                         f"⏰ {time_str}\n\n"
                         f"💡 Tiền đã vào bank. Kiểm tra sao kê để xử lý."
                     )
@@ -93,55 +145,63 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 except Exception as e:
                     logger.error("Failed to alert admin about duplicate NAP payment: %s", e)
             logger.warning("SePay webhook: no valid deposit found for NAP %d", deposit_id)
+            await _mark_webhook(reference_code, "completed")
             return web.json_response({"success": True})
 
         deposit = dict(deposit_row)
         user_row = await _db._fetch_one("SELECT telegram_id, full_name FROM users WHERE id = ?", (deposit["user_id"],))
-        if not user_row: return web.json_response({"success": True})
+        if not user_row:
+            await _mark_webhook(reference_code, "completed")
+            return web.json_response({"success": True})
         
         telegram_id = user_row["telegram_id"]
-        user_full_name = user_row["full_name"] or "N/A"
+        user_full_name = esc(user_row["full_name"] or "N/A")
         
         # Credit wallet (accept both pending and late payments)
-        await _db.complete_deposit(deposit["id"], reference_code)
-        new_balance = await _db.update_balance(telegram_id, amount)
+        try:
+            await _db.complete_deposit(deposit["id"], reference_code)
+            new_balance = await _db.update_balance(telegram_id, amount)
         
-        await _db.add_transaction(
-            user_id=deposit["user_id"], tx_type="deposit", amount=amount,
-            balance_after=new_balance, description=f"Nạp tiền (NAP{deposit_id})", reference_id=str(deposit["id"])
-        )
+            await _db.add_transaction(
+                user_id=deposit["user_id"], tx_type="deposit", amount=amount,
+                balance_after=new_balance, description=f"Nạp tiền (NAP{deposit_id})", reference_id=str(deposit["id"])
+            )
 
-        if _bot_app:
-            try:
-                from src.i18n import t
-                from src.utils.formatters import format_vnd
-                user = await _db.get_user(telegram_id)
-                lang = user.get("language", "vi") if user else "vi"
-                msg = t("deposit_success", lang, amount=format_vnd(amount), balance=format_vnd(new_balance))
-                if deposit['status'] != 'pending':
-                    msg = f"⏱ <b>Khoản nạp trễ được xử lý!</b>\n\n" + msg
-                await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
-            except Exception as e:
-                logger.error("Failed to notify user %d: %s", telegram_id, e)
+            if _bot_app:
+                try:
+                    from src.i18n import t
+                    from src.utils.formatters import format_vnd
+                    user = await _db.get_user(telegram_id)
+                    lang = user.get("language", "vi") if user else "vi"
+                    msg = t("deposit_success", lang, amount=format_vnd(amount), balance=format_vnd(new_balance))
+                    if deposit['status'] != 'pending':
+                        msg = f"⏱ <b>Khoản nạp trễ được xử lý!</b>\n\n" + msg
+                    await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+                except Exception as e:
+                    logger.error("Failed to notify user %d: %s", telegram_id, e)
 
-        # ADMIN: Notify every deposit with senderName for fraud detection
-        if _bot_app and config.admin_chat_id:
-            try:
-                from src.utils.formatters import format_vnd, now_vn
-                time_str = now_vn().strftime("%H:%M %d/%m/%Y")
-                late = " ⏱ (trễ)" if deposit['status'] != 'pending' else ""
-                admin_msg = (
-                    f"💰 <b>NẠP VÍ NAP{deposit_id}{late}</b>\n\n"
-                    f"👤 User: <b>{user_full_name}</b> (<code>{telegram_id}</code>)\n"
-                    f"🏦 Người chuyển: <b>{sender_name}</b>\n"
-                    f"💵 Số tiền: <b>{format_vnd(amount)}</b>\n"
-                    f"📊 Số dư mới: {format_vnd(new_balance)}\n"
-                    f"⏰ {time_str}"
-                )
-                await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
-            except Exception:
-                pass
-        logger.info("Deposit completed: NAP %d (sender: %s)", deposit_id, sender_name)
+            # ADMIN: Notify every deposit with senderName for fraud detection
+            if _bot_app and config.admin_chat_id:
+                try:
+                    from src.utils.formatters import format_vnd, now_vn
+                    time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                    late = " ⏱ (trễ)" if deposit['status'] != 'pending' else ""
+                    admin_msg = (
+                        f"💰 <b>NẠP VÍ NAP{deposit_id}{late}</b>\n\n"
+                        f"👤 User: <b>{user_full_name}</b> (<code>{telegram_id}</code>)\n"
+                        f"🏦 Người chuyển: <b>{sender_name}</b>\n"
+                        f"💵 Số tiền: <b>{format_vnd(amount)}</b>\n"
+                        f"📊 Số dư mới: {format_vnd(new_balance)}\n"
+                        f"⏰ {time_str}"
+                    )
+                    await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                except Exception:
+                    pass
+            logger.info("Deposit completed: NAP %d (sender: %s)", deposit_id, sender_name)
+        except Exception as e:
+            logger.exception("Failed handling NAP %d: %s", deposit_id, e)
+            await _mark_webhook(reference_code, "failed")
+            return web.json_response({"success": False, "error": str(e)}, status=500)
 
     elif prefix == "MUA":
         order_id = int(code_id)
@@ -149,6 +209,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         
         if not order:
             logger.warning("SePay MUA webhook: order %d not found", order_id)
+            await _mark_webhook(reference_code, "completed")
             return web.json_response({"success": True})
 
         if order["status"] == "completed":
@@ -156,21 +217,22 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             if _bot_app and config.admin_chat_id:
                 try:
                     from src.utils.formatters import format_vnd, now_vn
-                    sender_name = data.get("senderName", "N/A")
+                    sender_name = esc(data.get("senderName", "N/A"))
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     alert_msg = (
                         f"⚠️ <b>CẢNH BÁO: Thanh toán trùng!</b>\n\n"
                         f"Đơn <b>MUA{order_id}</b> đã hoàn tất trước đó,\n"
                         f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
                         f"👤 Người chuyển: <b>{sender_name}</b>\n"
-                        f"📝 Nội dung: <code>{content}</code>\n"
-                        f"🔖 Mã GD: <code>{reference_code}</code>\n"
+                        f"📝 Nội dung: <code>{esc(content)}</code>\n"
+                        f"🔖 Mã GD: <code>{esc(reference_code)}</code>\n"
                         f"⏰ {time_str}\n\n"
                         f"💡 Tiền đã vào bank. Kiểm tra sao kê để xử lý."
                     )
                     await _bot_app.bot.send_message(chat_id=config.admin_chat_id, text=alert_msg, parse_mode="HTML")
                 except Exception as e:
                     logger.error("Failed to alert admin about duplicate MUA payment: %s", e)
+            await _mark_webhook(reference_code, "completed")
             return web.json_response({"success": True})
 
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
@@ -220,6 +282,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         chat_id=telegram_id, text=msg,
                         reply_markup=kb, parse_mode="HTML"
                     )
+            await _mark_webhook(reference_code, "completed")
             return web.json_response({"success": True})
 
         user_row = await _db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
@@ -267,9 +330,9 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     admin_msg = (
                         f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
                         f"Đơn: MUA{order_id}\n"
-                        f"Sản phẩm: {order['product_name']}\n"
+                        f"Sản phẩm: {esc(order['product_name'])}\n"
                         f"SL: {order['quantity']}\n"
-                        f"Lỗi: <code>{error_msg}</code>\n\n"
+                        f"Lỗi: <code>{esc(error_msg)}</code>\n\n"
                         f"Đã hoàn {format_vnd(order['total_amount'])} vào ví khách.\n"
                         f"⚠️ Kiểm tra số dư Canboso ngay!"
                     )
@@ -295,8 +358,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     # Notify admin about referral bonus
                     if config.admin_chat_id:
                         try:
-                            referrer_name = (await _db.get_user(referrer["telegram_id"])).get("full_name", "N/A") if referrer else "N/A"
-                            buyer_name = user.get("full_name", "N/A") if user else "N/A"
+                            referrer_name = esc((await _db.get_user(referrer["telegram_id"])).get("full_name", "N/A")) if referrer else "N/A"
+                            buyer_name = esc(user.get("full_name", "N/A") if user else "N/A")
                             admin_ref_msg = (
                                 f"🎁 <b>Referral Bonus</b>\n\n"
                                 f"👤 Người nhận: <b>{referrer_name}</b>\n"
@@ -310,7 +373,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 if _bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,
-                        name=order["product_name"], quantity=order["quantity"],
+                        name=esc(order["product_name"]), quantity=order["quantity"],
                         total=format_vnd(order["total_amount"]), accounts=accounts_text
                     )
                     await _bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
@@ -324,8 +387,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                         admin_msg = (
                             f"🛒 <b>ĐƠN HÀNG MỚI #{order_id}</b>\n\n"
-                            f"👤 Khách: {user.get('full_name', 'N/A') if user else 'N/A'}\n"
-                            f"📦 SP: {order['product_name']} x{order['quantity']}\n"
+                            f"👤 Khách: {esc(user.get('full_name', 'N/A') if user else 'N/A')}\n"
+                            f"📦 SP: {esc(order['product_name'])} x{order['quantity']}\n"
                             f"💰 Bán: {format_vnd(order['total_amount'])}\n"
                             f"💵 Vốn: {format_vnd(cost)}\n"
                             f"📊 Lãi: +{format_vnd(profit)}\n"
@@ -337,9 +400,10 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         pass
         except Exception as e:
             logger.exception("Failed handling MUA %d: %s", order_id, e)
-            # Return 500 so SePay will retry
+            await _mark_webhook(reference_code, "failed")
             return web.json_response({"success": False, "error": str(e)}, status=500)
 
+    await _mark_webhook(reference_code, "completed")
     return web.json_response({"success": True})
 
 

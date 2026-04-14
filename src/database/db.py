@@ -264,6 +264,13 @@ class Database:
         row = await self._fetch_one("SELECT * FROM orders WHERE id = ?", (order_id,))
         return dict(row) if row else None
 
+    async def get_user_order(self, order_id: int, user_id: int) -> Optional[dict]:
+        row = await self._fetch_one(
+            "SELECT * FROM orders WHERE id = ? AND user_id = ?",
+            (order_id, user_id),
+        )
+        return dict(row) if row else None
+
     async def update_order(self, order_id: int, status: str, order_code: str = "", delivered_data: list = None):
         if delivered_data is not None:
             await self.conn.execute(

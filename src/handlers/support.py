@@ -12,6 +12,7 @@ from telegram.ext import (
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
+from src.utils.formatters import esc
 from src.utils.keyboards import main_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def _support_text(lang: str) -> str:
     """Build professional support info text."""
     lines = [t("support_header", lang), ""]
     lines.append(f"🏢 {t('support_contact_label', lang)}:")
-    lines.append(f"Shop Name: <b>{config.shop_name}</b>")
+    lines.append(f"Shop Name: <b>{esc(config.shop_name)}</b>")
     lines.append("")
 
     if config.support_zalo:
@@ -123,10 +124,10 @@ async def support_receive_message(update: Update, context: ContextTypes.DEFAULT_
     user = update.effective_user
 
     admin_text = t("support_admin_notify", lang,
-        user=user.full_name or "Unknown",
+        user=esc(user.full_name or "Unknown"),
         username=user.username or "N/A",
         user_id=user.id,
-        message=update.message.text,
+        message=esc(update.message.text),
     )
 
     try:

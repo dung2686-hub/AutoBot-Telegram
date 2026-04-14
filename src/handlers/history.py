@@ -91,14 +91,15 @@ async def history_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
+    db_user = context.user_data["db_user"]
 
     parts = query.data.split(":")
     order_id = int(parts[2])
 
-    order = await db.get_order(order_id)
+    order = await db.get_user_order(order_id, db_user["id"])
     if not order:
         await query.edit_message_text(
-            t("error_generic", lang),
+            "❌ Không tìm thấy đơn hàng hoặc bạn không có quyền xem đơn này.",
             reply_markup=back_to_menu_keyboard(lang),
             parse_mode="HTML",
         )

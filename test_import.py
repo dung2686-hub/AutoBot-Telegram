@@ -1,10 +1,14 @@
 import sys
+import io
+
 sys.path.insert(0, ".")
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 from src.config import config
 from src.database.db import Database
 from src.services.canboso import CanbosoClient
-from src.services.vietqr import generate_vietqr
+from src.services.vietqr import generate_qr_image
 from src.i18n import t
 from src.utils.keyboards import main_menu_keyboard
 from src.utils.formatters import format_vnd

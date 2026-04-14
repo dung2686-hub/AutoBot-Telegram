@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
-from src.utils.formatters import format_vnd, shorten_product_name
+from src.utils.formatters import format_vnd, shorten_product_name, esc
 from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, confirm_cancel_keyboard
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,6 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
-    db_user = context.user_data["db_user"]
 
     parts = query.data.split(":")
     product_id = parts[2]
@@ -289,9 +288,9 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg_text = (
         f"🏦 <b>Chuyển khoản tới {bank_display} - {config.bank_account}</b>\n"
-        f"👤 Chủ TK: <b>{config.bank_account_name}</b>\n\n"
+        f"👤 Chủ TK: <b>{esc(config.bank_account_name)}</b>\n\n"
         f"💰 Số tiền: <b>{format_vnd(total)}</b>\n"
-        f"📝 Nội dung CK: <code>{order_code_mem}</code>\n"
+        f"📝 Nội dung CK: <code>{esc(order_code_mem)}</code>\n"
         f"⏰ Thời gian còn lại: <b>5 phút</b>\n\n"
         f"📱 Quét mã QR bên dưới để chuyển khoản.\n"
         f"⚠️ <b>Lưu ý:</b> Nhập đúng nội dung chuyển khoản!"
@@ -379,20 +378,6 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     # Call Canboso API
-    result = await canboso.purchase(
-        product_id=product_id,
-        quantity=quantity,
-    )
-
-    if not result.get("success"):
-        error_msg = result.get("message", "Unknown error")
-        await query.edit_message_text(
-            t("purchase_error", lang, error=error_msg),
-            reply_markup=back_to_menu_keyboard(lang),
-            parse_mode="HTML",
-        )
-        return
-
     # Deduct balance (atomic — prevents race condition)
     logger.info("[WALLET-PURCHASE] Deducting %s from user %s", total, telegram_id)
     new_balance = await db.update_balance(telegram_id, -total)
@@ -407,29 +392,96 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         )
         return
 
-    # Get delivered accounts
-    delivered = result.get("deliveredAccounts", [])
-
-    # Save order
     user = await db.get_user(telegram_id)
-    await db.create_order(
-        user_id=user["id"],
+    try:
+        order = await db.create_order(
+            user_id=user["id"],
+            order_code="",
+            product_id=product_id,
+            product_name=product.get("product_name", ""),
+            quantity=quantity,
+            original_price=product.get("walletPricing", 0),
+            sell_price=sell_price,
+            delivered_data=[],
+            status="pending",
+        )
+    except Exception:
+        refund_balance = await db.update_balance(telegram_id, total)
+        logger.exception("[WALLET-PURCHASE] Failed to create pending order, refunded user %s", telegram_id)
+        try:
+            await db.add_transaction(
+                user_id=user["id"],
+                tx_type="refund",
+                amount=total,
+                balance_after=refund_balance,
+                description="Hoàn tiền do lỗi tạo đơn hàng",
+            )
+        except Exception:
+            logger.exception("[WALLET-PURCHASE] Failed to log refund after order creation error")
+        await query.edit_message_text(
+            t("purchase_error", lang, error="Internal order creation failed"),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        result = await canboso.purchase(
+            product_id=product_id,
+            quantity=quantity,
+        )
+    except Exception as e:
+        refund_balance = await db.update_balance(telegram_id, total)
+        await db.update_order(order["id"], status="failed")
+        await db.add_transaction(
+            user_id=user["id"],
+            tx_type="refund",
+            amount=total,
+            balance_after=refund_balance,
+            description=f"Hoàn tiền do lỗi kết nối nguồn ({order['id']})",
+            reference_id=str(order["id"]),
+        )
+        logger.exception("[WALLET-PURCHASE] Provider call crashed for user %s: %s", telegram_id, e)
+        await query.edit_message_text(
+            t("purchase_error", lang, error="Provider request failed"),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    if not result.get("success"):
+        error_msg = result.get("message", "Unknown error")
+        refund_balance = await db.update_balance(telegram_id, total)
+        await db.update_order(order["id"], status="failed")
+        await db.add_transaction(
+            user_id=user["id"],
+            tx_type="refund",
+            amount=total,
+            balance_after=refund_balance,
+            description=f"Hoàn tiền do lỗi mua hàng ({order['id']})",
+            reference_id=str(order["id"]),
+        )
+        await query.edit_message_text(
+            t("purchase_error", lang, error=error_msg),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    delivered = result.get("deliveredAccounts", [])
+    await db.update_order(
+        order["id"],
+        status="completed",
         order_code=result.get("orderCode", ""),
-        product_id=product_id,
-        product_name=product.get("product_name", ""),
-        quantity=quantity,
-        original_price=product.get("walletPricing", 0),
-        sell_price=sell_price,
         delivered_data=delivered,
     )
-
-    # Log transaction
     await db.add_transaction(
         user_id=user["id"],
         tx_type="purchase",
         amount=-total,
         balance_after=new_balance,
         description=f"Mua {product.get('product_name', '')} x{quantity}",
+        reference_id=str(order["id"]),
     )
 
     # Check and pay referral bonus
@@ -444,8 +496,8 @@ async def _do_execute_purchase(update, context, query, telegram_id):
             # Notify admin about referral bonus
             if config.admin_chat_id:
                 referrer_user = await db.get_user(referrer["telegram_id"]) if referrer else None
-                referrer_name = referrer_user.get("full_name", "N/A") if referrer_user else "N/A"
-                buyer_name = user.get("full_name", "N/A")
+                referrer_name = esc(referrer_user.get("full_name", "N/A")) if referrer_user else "N/A"
+                buyer_name = esc(user.get("full_name", "N/A"))
                 admin_ref_msg = (
                     f"🎁 <b>Referral Bonus</b>\n\n"
                     f"👤 Người nhận: <b>{referrer_name}</b>\n"
@@ -505,7 +557,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
             time_str = now_vn().strftime("%H:%M %d/%m/%Y")
             admin_msg = (
                 f"🛒 <b>ĐƠN HÀNG MỚI</b>\n\n"
-                f"👤 Khách: {user.get('full_name', 'N/A')}\n"
+                f"👤 Khách: {esc(user.get('full_name', 'N/A'))}\n"
                 f"📦 SP: {product.get('product_name', '')} x{quantity}\n"
                 f"💰 Bán: {format_vnd(total)}\n"
                 f"💵 Vốn: {format_vnd(cost)}\n"
@@ -541,7 +593,7 @@ async def custom_product_detail(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     text = (
-        f"📦 <b>{product['name']}</b>\n"
+        f"📦 <b>{esc(product['name'])}</b>\n"
         f"💰 Giá: <b>{format_vnd(product['price'])}</b>\n\n"
         f"📌 Liên hệ Admin để mua sản phẩm này:"
     )
@@ -560,4 +612,3 @@ async def custom_product_detail(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(
         text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML"
     )
-

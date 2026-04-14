@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
+from src.utils.formatters import esc
 from src.utils.keyboards import main_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Block 1: Welcome & Referral Program
     msg1 = (
-        f"👋 Xin chào {first_name} đã đến với <b>{bot_display_name}</b>!\n\n"
+        f"👋 Xin chào {first_name} đã đến với <b>{esc(bot_display_name)}</b>!\n\n"
         f"🎁 Chương trình giới thiệu bạn bè\n\n"
         f"• Chia sẻ link bot kèm mã giới thiệu của bạn.\n"
         f"• Khi người được mời phát sinh đơn hàng đầu tiên, bạn nhận 10% giá trị đơn vào ví.\n"

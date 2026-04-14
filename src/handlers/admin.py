@@ -13,7 +13,7 @@ from telegram.ext import (
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, admin_only, error_handler
-from src.utils.formatters import format_vnd
+from src.utils.formatters import format_vnd, esc
 from src.utils.keyboards import admin_keyboard, back_to_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
         return False
 
     username = user.get("username", "") or "N/A"
-    full_name = user.get("full_name", "") or "N/A"
+    full_name = esc(user.get("full_name", "") or "N/A")
     balance = user.get("balance", 0)
     lang = user.get("language", "vi")
     created = format_date(user.get("created_at", ""))
@@ -141,7 +141,7 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
         f"👤 <b>THÔNG TIN USER</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🆔 Telegram ID: <code>{target_id}</code>\n"
-        f"📛 Tên: <b>{full_name}</b>\n"
+        f"📛 Tên: <b>{esc(full_name)}</b>\n"
         f"🔗 Username: @{username}\n"
         f"💰 Số dư ví: <b>{format_vnd(balance)}</b>\n"
         f"🌐 Ngôn ngữ: {lang}\n"
@@ -156,7 +156,7 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
         for tx in txns:
             tx_amount = tx["amount"]
             sign = "+" if tx_amount > 0 else ""
-            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {tx.get('description', '')} | {format_date(tx.get('created_at', ''))}\n"
+            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {esc(tx.get('description', ''))} | {format_date(tx.get('created_at', ''))}\n"
 
     deposits = await db.get_user_deposits(user["id"], limit=5)
     if deposits:
@@ -170,7 +170,7 @@ async def _lookup_user(update: Update, db, target_id: int) -> bool:
         text += "\n🛒 <b>5 đơn hàng gần nhất:</b>\n"
         for o in orders:
             status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(o["status"], "❓")
-            text += f"  • MUA{o['id']} | {o.get('product_name', 'N/A')} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
+            text += f"  • MUA{o['id']} | {esc(o.get('product_name', 'N/A'))} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
 
     keyboard = [
         [
@@ -250,7 +250,7 @@ async def quickcredit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = context.bot_data["db"]
     user = await db.get_user(target_id)
-    name = user.get("full_name", "N/A") if user else "N/A"
+    name = esc(user.get("full_name", "N/A") if user else "N/A")
     balance = user.get("balance", 0) if user else 0
 
     keyboard = [[InlineKeyboardButton("❌ Hủy", callback_data="admin:refresh")]]
@@ -488,7 +488,7 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sell = calc_sell
             mode = f"{pct}%"
 
-        text += f"{status_icon} <b>{name}</b>\n"
+        text += f"{status_icon} <b>{esc(name)}</b>\n"
         text += f"   Gốc: {format_vnd(cost)} → Bán: <b>{format_vnd(sell)}</b> ({mode})\n"
 
         btn_text = f"{status_icon} {name} | {format_vnd(sell)}"
@@ -541,10 +541,10 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price_mode_str = f"Markup {m['markup_percent']}%"
     
     current_note = await db.get_custom_note(product_id)
-    note_preview = f"\n📌 Ghi chú: <i>{current_note[:80]}{'...' if len(current_note) > 80 else ''}</i>" if current_note else "\n📌 Ghi chú: <i>(chưa có)</i>"
+    note_preview = f"\n📌 Ghi chú: <i>{esc(current_note[:80])}{'...' if len(current_note) > 80 else ''}</i>" if current_note else "\n📌 Ghi chú: <i>(chưa có)</i>"
 
     text = (
-        f"Bạn đang đổi giá cho: <b>{name}</b>\n"
+        f"Bạn đang đổi giá cho: <b>{esc(name)}</b>\n"
         f"Trạng thái: <b>{status_text}</b>\n"
         f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
         f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>\n"
@@ -631,7 +631,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sell_str = "N/A"
 
         await update.message.reply_text(
-            f"✅ <b>{name}</b>\nMarkup: {markup}% → Giá bán: <b>{sell_str}</b>",
+            f"✅ <b>{esc(name)}</b>\nMarkup: {markup}% → Giá bán: <b>{sell_str}</b>",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )
@@ -690,8 +690,8 @@ async def note_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     note_display = current_note if current_note else "(chưa có)"
 
     text = (
-        f"📝 <b>Sửa ghi chú cho: {name}</b>\n\n"
-        f"Ghi chú hiện tại:\n<i>{note_display}</i>\n\n"
+        f"📝 <b>Sửa ghi chú cho: {esc(name)}</b>\n\n"
+        f"Ghi chú hiện tại:\n<i>{esc(note_display)}</i>\n\n"
         f"Nhập ghi chú mới (hoặc gõ <code>xoa</code> để xóa):"
     )
     keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:markup")]]
@@ -720,14 +720,14 @@ async def note_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if note_text.lower() == "xoa":
         await db.set_custom_note(product_id, name, "")
         await update.message.reply_text(
-            f"✅ Đã xóa ghi chú cho <b>{name}</b>",
+            f"✅ Đã xóa ghi chú cho <b>{esc(name)}</b>",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )
     else:
         await db.set_custom_note(product_id, name, note_text)
         await update.message.reply_text(
-            f"✅ Đã lưu ghi chú cho <b>{name}</b>:\n\n📌 {note_text}",
+            f"✅ Đã lưu ghi chú cho <b>{esc(name)}</b>:\n\n📌 {esc(note_text)}",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )
@@ -761,7 +761,7 @@ async def custom_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if products:
         for p in products:
-            text += f"• <b>{p['name']}</b> — {format_vnd(p['price'])}\n"
+            text += f"• <b>{esc(p['name'])}</b> — {format_vnd(p['price'])}\n"
             keyboard.append([
                 InlineKeyboardButton(f"✏️ {p['name']}", callback_data=f"admin:custom_edit:{p['id']}"),
                 InlineKeyboardButton("❌", callback_data=f"admin:custom_del:{p['id']}"),
@@ -805,7 +805,7 @@ async def custom_add_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["custom_product_name"] = name
 
     await update.message.reply_text(
-        f"Tên: <b>{name}</b>\n\nNhập <b>giá bán</b> (VND, ví dụ: <code>300000</code>):",
+        f"Tên: <b>{esc(name)}</b>\n\nNhập <b>giá bán</b> (VND, ví dụ: <code>300000</code>):",
         parse_mode="HTML",
     )
     return CUSTOM_PRICE
@@ -832,7 +832,7 @@ async def custom_add_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = await db.add_custom_product(name, price)
 
     await update.message.reply_text(
-        f"✅ Đã thêm: <b>{product['name']}</b>\n💰 Giá: <b>{format_vnd(product['price'])}</b>",
+        f"✅ Đã thêm: <b>{esc(product['name'])}</b>\n💰 Giá: <b>{format_vnd(product['price'])}</b>",
         reply_markup=admin_keyboard(),
         parse_mode="HTML",
     )
@@ -867,7 +867,7 @@ async def custom_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:custom")]
     ]
     await query.edit_message_text(
-        f"✏️ <b>Sửa sản phẩm: {product['name']}</b>\n"
+        f"✏️ <b>Sửa sản phẩm: {esc(product['name'])}</b>\n"
         f"💰 Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
         f"Bạn muốn thay đổi thông tin nào?",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -891,7 +891,7 @@ async def custom_edit_name_prompt(update: Update, context: ContextTypes.DEFAULT_
 
     keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
     await query.edit_message_text(
-        f"✏️ <b>Sửa tên: {product['name']}</b>\n\n"
+        f"✏️ <b>Sửa tên: {esc(product['name'])}</b>\n\n"
         f"Nhập tên mới cho sản phẩm này:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
@@ -914,7 +914,7 @@ async def custom_edit_price_prompt(update: Update, context: ContextTypes.DEFAULT
 
     keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
     await query.edit_message_text(
-        f"💰 <b>Sửa giá: {product['name']}</b>\n"
+        f"💰 <b>Sửa giá: {esc(product['name'])}</b>\n"
         f"Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
         f"Nhập giá mới (VND):",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -943,7 +943,7 @@ async def custom_edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = await db.get_custom_product(product_id)
 
     await update.message.reply_text(
-        f"✅ <b>Đã đổi tên thành:</b> {product['name']}",
+        f"✅ <b>Đã đổi tên thành:</b> {esc(product['name'])}",
         reply_markup=admin_keyboard(),
         parse_mode="HTML",
     )
@@ -976,7 +976,7 @@ async def custom_edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.update_custom_product(product_id, price=price)
 
     await update.message.reply_text(
-        f"✅ <b>{product['name']}</b>\nGiá mới: <b>{format_vnd(price)}</b>",
+        f"✅ <b>{esc(product['name'])}</b>\nGiá mới: <b>{format_vnd(price)}</b>",
         reply_markup=admin_keyboard(),
         parse_mode="HTML",
     )
@@ -1000,7 +1000,7 @@ async def custom_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if product:
         await db.delete_custom_product(product_id)
         await query.edit_message_text(
-            f"🗑 Đã xóa: <b>{product['name']}</b>",
+            f"🗑 Đã xóa: <b>{esc(product['name'])}</b>",
             reply_markup=admin_keyboard(),
             parse_mode="HTML",
         )

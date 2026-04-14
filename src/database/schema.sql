@@ -76,4 +76,13 @@ CREATE INDEX IF NOT EXISTS idx_deposits_code ON deposits(code);
 CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE TABLE IF NOT EXISTS processed_webhooks (
+    reference_code  TEXT PRIMARY KEY,
+    prefix          TEXT NOT NULL,              -- NAP / MUA
+    code_id         INTEGER NOT NULL,           -- deposit_id or order_id
+    amount          INTEGER NOT NULL,
+    status          TEXT DEFAULT 'processing',  -- processing / completed / failed
+    processed_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_custom_products_active ON custom_products(is_active);

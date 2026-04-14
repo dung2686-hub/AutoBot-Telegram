@@ -1,4 +1,10 @@
+import html
 import re
+
+
+def esc(text: str) -> str:
+    """Escape user-supplied text for Telegram HTML parse mode."""
+    return html.escape(str(text)) if text else ""
 
 def format_vnd(amount: int) -> str:
     """Format integer to VND string: 100000 -> '100,000đ'"""
