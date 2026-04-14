@@ -475,8 +475,8 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         status_icon = "🟢" if is_active else "🔴"
         
-        # Đảm bảo lãi tối thiểu 10k HOẶC 20%
-        min_sell = max(cost + 10000, int(cost * 1.20))
+        # Đảm bảo lãi tối thiểu 15k HOẶC 30%
+        min_sell = max(cost + 15000, int(cost * 1.30))
         calc_sell = int(cost * (1 + pct / 100))
         calc_sell = max(calc_sell, min_sell)
 
@@ -530,7 +530,7 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_active = m_row["is_active"] if m_row else 1
     status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
     
-    min_sell = max(cost + 10000, int(cost * 1.20))
+    min_sell = max(cost + 15000, int(cost * 1.30))
     
     from src.handlers.shop import calc_sell_price
     current_sell_price = await calc_sell_price(db, product_id, cost)
@@ -603,7 +603,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.set_markup(product_id, name, 0, fixed_price)
         
         # Calculate actual sell price applied
-        min_sell = max(cost + 10000, int(cost * 1.20))
+        min_sell = max(cost + 15000, int(cost * 1.30))
         actual_sell = max(fixed_price, min_sell)
         
         await update.message.reply_text(
@@ -623,7 +623,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if cost:
             calc_sell = int(cost * (1 + markup / 100))
-            min_sell = max(cost + 10000, int(cost * 1.20))
+            min_sell = max(cost + 15000, int(cost * 1.30))
             actual_sell = max(calc_sell, min_sell)
             sell_str = format_vnd(actual_sell)
         else:
