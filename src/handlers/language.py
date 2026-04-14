@@ -34,7 +34,7 @@ async def language_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = query.data.split(":")
     new_lang = parts[1]
 
-    await db.update_user_language(telegram_id, new_lang)
+    await db.set_user_language(telegram_id, new_lang)
     context.user_data["lang"] = new_lang
 
     # Refresh db_user cache

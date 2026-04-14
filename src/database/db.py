@@ -78,13 +78,6 @@ class Database:
         )
         return dict(row) if row else None
 
-    async def update_user_language(self, telegram_id: int, lang: str):
-        await self.conn.execute(
-            "UPDATE users SET language = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
-            (lang, telegram_id),
-        )
-        await self.conn.commit()
-
     async def set_referral(self, telegram_id: int, referrer_id: int) -> bool:
         """Sets referred_by if it's null and not self. Returns True if successfully set."""
         if telegram_id == referrer_id:
@@ -114,11 +107,20 @@ class Database:
         await self.conn.commit()
 
     async def update_balance(self, telegram_id: int, amount: int) -> int:
-        """Add amount to balance (negative to deduct). Returns new balance."""
-        await self.conn.execute(
-            "UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
-            (amount, telegram_id),
-        )
+        """Add amount to balance (negative to deduct). Returns new balance, or -1 if insufficient."""
+        if amount < 0:
+            cursor = await self.conn.execute(
+                "UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE telegram_id = ? AND balance + ? >= 0",
+                (amount, telegram_id, amount),
+            )
+            if cursor.rowcount == 0:
+                return -1
+        else:
+            await self.conn.execute(
+                "UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
+                (amount, telegram_id),
+            )
         await self.conn.commit()
         user = await self.get_user(telegram_id)
         return user["balance"]
@@ -213,14 +215,15 @@ class Database:
         return [dict(r) for r in rows]
 
     async def expire_old_orders(self, minutes: int) -> list[dict]:
-        # orders table uses CURRENT_TIMESTAMP which is UTC in SQLite, we should compare appropriately.
-        # SQLite datetime('now', '-5 minutes')
+        modifier = f"-{int(minutes)} minutes"
         rows = await self._fetch_all(
-            f"SELECT * FROM orders WHERE status = 'pending' AND created_at < datetime('now', '-{minutes} minutes')"
+            "SELECT * FROM orders WHERE status = 'pending' AND created_at < datetime('now', ?)",
+            (modifier,),
         )
         if rows:
             await self.conn.execute(
-                f"UPDATE orders SET status = 'expired' WHERE status = 'pending' AND created_at < datetime('now', '-{minutes} minutes')"
+                "UPDATE orders SET status = 'expired' WHERE status = 'pending' AND created_at < datetime('now', ?)",
+                (modifier,),
             )
             await self.conn.commit()
         return [dict(r) for r in rows]
@@ -281,9 +284,6 @@ class Database:
         )
         return [dict(r) for r in rows]
 
-    async def get_order_by_id(self, order_id: int) -> Optional[dict]:
-        row = await self._fetch_one("SELECT * FROM orders WHERE id = ?", (order_id,))
-        return dict(row) if row else None
 
     async def count_user_orders(self, user_id: int) -> int:
         row = await self._fetch_one(

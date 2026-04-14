@@ -27,7 +27,6 @@ from src.handlers.wallet import wallet_menu, transaction_history, get_deposit_co
 from src.handlers.profile import profile_menu
 from src.handlers.history import history_menu, history_detail
 from src.handlers.support import get_support_conversation
-from src.handlers.language import language_menu, language_set
 from src.handlers.admin import admin_command, admin_refresh, backup_command, get_admin_conversation
 
 logging.basicConfig(
@@ -139,10 +138,6 @@ def build_application() -> Application:
     # History
     app.add_handler(CallbackQueryHandler(history_menu, pattern=r"^menu:history"))
     app.add_handler(CallbackQueryHandler(history_detail, pattern=r"^history:detail:"))
-
-    # Language
-    app.add_handler(CallbackQueryHandler(language_menu, pattern=r"^menu:language$"))
-    app.add_handler(CallbackQueryHandler(language_set, pattern=r"^lang:"))
 
     # Admin
     app.add_handler(CallbackQueryHandler(admin_refresh, pattern=r"^admin:refresh$"))

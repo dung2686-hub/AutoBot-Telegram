@@ -393,9 +393,19 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         )
         return
 
-    # Deduct balance
+    # Deduct balance (atomic — prevents race condition)
     logger.info("[WALLET-PURCHASE] Deducting %s from user %s", total, telegram_id)
     new_balance = await db.update_balance(telegram_id, -total)
+    if new_balance == -1:
+        await query.edit_message_text(
+            t("purchase_insufficient", lang,
+                balance=format_vnd(await db.get_balance(telegram_id)),
+                total=format_vnd(total),
+            ),
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
 
     # Get delivered accounts
     delivered = result.get("deliveredAccounts", [])

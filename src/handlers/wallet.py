@@ -1,7 +1,5 @@
 import io
 import logging
-import secrets
-import string
 
 from telegram import Update
 from telegram.ext import (
@@ -21,13 +19,6 @@ from src.utils.keyboards import wallet_keyboard, back_to_menu_keyboard
 logger = logging.getLogger(__name__)
 
 ENTER_AMOUNT = 1
-
-
-def _generate_payment_code(user_id: int) -> str:
-    """Generate unique payment code: NAP + 8 random chars."""
-    chars = string.ascii_uppercase + string.digits
-    rand = "".join(secrets.choice(chars) for _ in range(8))
-    return f"NAP{rand}"
 
 
 # ── Wallet Menu ───────────────────────────────────────────

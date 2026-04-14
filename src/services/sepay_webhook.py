@@ -231,10 +231,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             user = await _db.get_user(telegram_id) if telegram_id else None
             lang = user.get("language", "vi") if user else "vi"
 
-            # Execute Canboso Purchase
-            from src.services.canboso import CanbosoClient
-            canboso = CanbosoClient()
-            await canboso.start()
+            # Reuse shared CanbosoClient from bot_data
+            canboso = _bot_app.bot_data["canboso"]
             
             # --- PROTECT AGAINST PRICE SLIPPAGE ---
             await canboso.refresh_cache()
@@ -244,11 +242,9 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             # If the product cost is now higher than what we sold it for, abort!
             if not product or current_cost > order["sell_price"]:
                 logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
-                await canboso.close()
                 result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}
             else:
                 result = await canboso.purchase(product_id=order["product_id"], quantity=order["quantity"])
-                await canboso.close()
 
             if not result.get("success"):
                 # Refund to wallet

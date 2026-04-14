@@ -95,7 +95,7 @@ async def history_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = query.data.split(":")
     order_id = int(parts[2])
 
-    order = await db.get_order_by_id(order_id)
+    order = await db.get_order(order_id)
     if not order:
         await query.edit_message_text(
             t("error_generic", lang),
