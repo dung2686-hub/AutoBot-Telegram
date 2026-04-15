@@ -92,7 +92,7 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
     
     sell_price = await calc_sell_price(db, product_id, cost)
-    min_sell = await calc_min_sell(db, product_id, cost)
+    min_sell = calc_min_sell(cost)
     m = await db.get_markup(product_id, config.default_markup_percent)
     if m["fixed_price"] > 0:
         price_mode_str = "Cố định"
@@ -160,7 +160,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await db.set_markup(product_id, name, 0, fixed_price)
         
-        min_sell = await calc_min_sell(db, product_id, cost)
+        min_sell = calc_min_sell(cost)
         actual_sell = max(fixed_price, min_sell)
         
         await update.message.reply_text(
@@ -180,7 +180,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if cost:
             calc_sell = int(cost * (1 + markup / 100))
-            min_sell = await calc_min_sell(db, product_id, cost)
+            min_sell = calc_min_sell(cost)
             actual_sell = max(calc_sell, min_sell)
             sell_str = format_vnd(actual_sell)
         else:
