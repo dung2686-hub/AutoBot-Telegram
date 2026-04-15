@@ -22,7 +22,7 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
-    text += "Bậc thang: <100k (30%), >100k (25%)\n"
+    text += "Bậc thang: &lt;100k (30%), ≥100k (25%)\n"
     text += "━━━━━━━━━━━━━━━━━━\n"
 
     keyboard = []
