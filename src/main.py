@@ -48,11 +48,8 @@ async def post_init(application: Application):
     application.bot_data["db"] = db
     application.bot_data["canboso"] = canboso
 
-    # Set up SePay webhook dependencies
-    sepay_webhook.set_dependencies(application, db)
-
     # Start SePay webhook server
-    runner = await run_webhook_server()
+    runner = await run_webhook_server(application, db)
     application.bot_data["webhook_runner"] = runner
 
     # Start scheduler for periodic tasks
@@ -147,9 +144,9 @@ def build_application() -> Application:
     return app
 
 
-async def run_webhook_server():
+async def run_webhook_server(application, db):
     """Run SePay webhook server alongside the bot."""
-    webhook_app = sepay_webhook.create_webhook_app()
+    webhook_app = sepay_webhook.create_webhook_app(bot_app=application, db=db)
     runner = web.AppRunner(webhook_app)
     await runner.setup()
     site = web.TCPSite(runner, config.webhook_host, config.webhook_port)
