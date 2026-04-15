@@ -143,7 +143,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         logger.warning("SePay webhook: amount %d exceeds safety cap %d", amount, MAX_TRANSFER_AMOUNT)
         if bot_app and config.admin_chat_id:
             try:
-                from src.utils.formatters import format_vnd
                 alert = (
                     f"🚨 <b>CẢNH BÁO: Giao dịch vượt giới hạn!</b>\n\n"
                     f"💰 Số tiền: <b>{format_vnd(amount)}</b>\n"
