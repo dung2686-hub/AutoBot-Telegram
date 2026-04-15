@@ -62,16 +62,19 @@ When user's prompt is NOT in English:
 
 ### 🧹 Clean Code (Global Mandatory)
 
-**ALL code MUST follow `@[skills/clean-code]` rules. No exceptions.**
+**ALL code MUST follow `@[skills/clean-code]` + `@[skills/coding-standards]` rules. No exceptions.**
 
 - Concise, direct, solution-focused
 - No verbose explanations
 - No over-commenting
 - No over-engineering
+- **Immutability:** Create new objects, never mutate existing ones.
 - **Self-Documentation:** Every agent is responsible for documenting their own changes in relevant `.md` files.
-- **Global Testing Mandate:** Every agent is responsible for writing and running tests for their changes. Follow the "Testing Pyramid" (Unit > Integration > E2E) and the "AAA Pattern" (Arrange, Act, Assert).
-- **Global Performance Mandate:** "Measure first, optimize second." Every agent must ensure their changes adhere to 2025 performance standards (Core Web Vitals for Web, query optimization for DB, bundle limits for FS).
-- **Infrastructure & Safety Mandate:** Every agent is responsible for the deployability and operational safety of their changes. Follow the "5-Phase Deployment Process" (Prepare, Backup, Deploy, Verify, Confirm/Rollback). Always verify environment variables and secrets security.
+- **Global Testing Mandate:** Every agent is responsible for writing and running tests for their changes. Follow the "Testing Pyramid" (Unit > Integration > E2E) and the "AAA Pattern" (Arrange, Act, Assert). See `@[rules/common/testing]`.
+- **Global Performance Mandate:** "Measure first, optimize second." Every agent must ensure their changes adhere to 2026 performance standards (Core Web Vitals for Web, query optimization for DB, bundle limits for FS).
+- **Infrastructure & Safety Mandate:** Every agent is responsible for the deployability and operational safety of their changes. Follow the "5-Phase Deployment Process" (Prepare, Backup, Deploy, Verify, Confirm/Rollback). Always verify environment variables and secrets security. See `@[rules/common/security]`.
+- **Search-First Mandate:** Before writing custom code, check for existing solutions. See `@[skills/search-first]`.
+- **Git Workflow:** Follow conventional commits and PR standards. See `@[skills/git-workflow]`.
 
 ### 📁 File Dependency Awareness
 
@@ -212,7 +215,7 @@ When user's prompt is NOT in English:
 
 ## 📁 QUICK REFERENCE
 
-### Available Master Agents (8)
+### Available Master Agents (11)
 
 | Agent | Domain & Focus |
 |-------|----------------|
@@ -224,19 +227,38 @@ When user's prompt is NOT in English:
 | `mobile-developer` | Mobile Specialist (Cross-platform + Mobile Performance)|
 | `debugger` | Systematic Root Cause Analysis & Bug Fixing |
 | `game-developer` | Specialized Game Logic & Assets & Performance |
+| `code-reviewer` | Code Quality, Security & Performance Review |
+| `researcher` | Research Existing Solutions Before Coding |
+| `refactorer` | Safe Code Restructuring & De-Sloppify |
 
 ### Key Skills
 
 | Skill | Purpose |
 |-------|---------|
 | `clean-code` | Coding standards (GLOBAL) |
+| `coding-standards` | Immutability, KISS, DRY, YAGNI (GLOBAL) |
+| `search-first` | Research before coding (GLOBAL) |
+| `security-review` | OWASP checklist & practical security |
+| `continuous-learning` | Instinct-based pattern extraction |
+| `git-workflow` | Conventional commits, PR process |
+| `autonomous-loops` | Sequential pipeline, De-Sloppify |
 | `brainstorming` | Socratic questioning |
 | `app-builder` | Full-stack orchestration |
 | `frontend-design` | Web UI patterns |
 | `mobile-design` | Mobile UI patterns |
 | `plan-writing` | {task-slug}.md format |
-| `threejs-mastery` | 2025 3D Web (R3F, WebGPU) |
 | `behavioral-modes` | Mode switching |
+
+### Structured Rules
+
+| Rule File | Scope | Content |
+|-----------|-------|---------|
+| `rules/common/coding-style.md` | All languages | Immutability, KISS, DRY, naming |
+| `rules/common/git-workflow.md` | All languages | Commits, branches, PRs |
+| `rules/common/security.md` | All languages | Mandatory security checks |
+| `rules/common/testing.md` | All languages | TDD, coverage targets |
+| `rules/python/style.md` | Python | PEP 8, type hints, async |
+| `rules/web/style.md` | JS/TS/React | Strict TS, React, CSS |
 
 ### Script Locations
 

@@ -106,7 +106,6 @@ def build_application() -> Application:
 
     # ── Command Handlers ──────────────────────────────────
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("backup", backup_command))
 
     # ── Callback Query Handlers ───────────────────────────

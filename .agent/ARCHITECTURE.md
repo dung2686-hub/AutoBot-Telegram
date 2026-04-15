@@ -1,15 +1,19 @@
 # Antigravity Kit Architecture
 
-> **Version 5.0** - Comprehensive AI Agent Capability Expansion Toolkit
+> **Version 6.0** - Comprehensive AI Agent Capability Expansion Toolkit
+> Upgraded with ECC (Everything Claude Code) best practices integration.
 
 ---
 
 ## 📋 Overview
 
-Antigravity Kit is a modular system consisting of:
-- **16 Specialist Agents** - Role-based AI personas
-- **40 Skills** - Domain-specific knowledge modules
-- **11 Workflows** - Slash command procedures
+Antigravity Kit is a modular, portable system consisting of:
+- **23 Specialist Agents** - Role-based AI personas
+- **50 Skills** - Domain-specific knowledge modules
+- **15 Workflows** - Slash command procedures
+- **Structured Rules** - By language (common, python, web)
+
+**Portable**: Copy `.agent/` into any project to get full AI development capabilities.
 
 ---
 
@@ -18,16 +22,26 @@ Antigravity Kit is a modular system consisting of:
 ```
 .agent/
 ├── ARCHITECTURE.md          # This file
-├── agents/                  # 16 Specialist Agents
-├── skills/                  # 40 Skills
-├── workflows/               # 11 Slash Commands
-├── rules/                   # Global Rules
+├── agents/                  # 23 Specialist Agents
+├── skills/                  # 50 Skills
+├── workflows/               # 15 Slash Commands
+├── rules/                   # Structured Rules
+│   ├── GEMINI.md            # Master config
+│   ├── common/              # Language-agnostic
+│   │   ├── coding-style.md
+│   │   ├── git-workflow.md
+│   │   ├── security.md
+│   │   └── testing.md
+│   ├── python/              # Python-specific
+│   │   └── style.md
+│   └── web/                 # Web (JS/TS) specific
+│       └── style.md
 └── .shared/                 # Shared Resources
 ```
 
 ---
 
-## 🤖 Agents (16)
+## 🤖 Agents (23)
 
 Specialist AI personas for different domains.
 
@@ -49,10 +63,17 @@ Specialist AI personas for different domains.
 | `seo-specialist` | Ranking, visibility | seo-fundamentals, geo-fundamentals |
 | `documentation-writer` | Manuals, docs | documentation-templates |
 | `explorer-agent` | Codebase analysis | - |
+| `product-manager` | Product strategy | brainstorming, plan-writing |
+| `product-owner` | User stories, backlog | brainstorming |
+| `qa-automation-engineer` | QA automation | testing-patterns, webapp-testing |
+| `code-archaeologist` | Legacy code analysis | systematic-debugging |
+| `**code-reviewer**` | **Code quality & security review** | **security-review, coding-standards** |
+| `**researcher**` | **Find existing solutions** | **search-first, architecture** |
+| `**refactorer**` | **Code restructuring** | **coding-standards, clean-code** |
 
 ---
 
-## 🧠 Skills (40)
+## 🧠 Skills (50)
 
 Domain-specific knowledge modules. Skills are loaded on-demand based on task context.
 
@@ -64,6 +85,7 @@ Domain-specific knowledge modules. Skills are loaded on-demand based on task con
 | `tailwind-patterns` | Tailwind CSS v4 utilities |
 | `frontend-design` | UI/UX patterns, design systems |
 | `ui-ux-pro-max` | 50 styles, 21 palettes, 50 fonts |
+| `web-design-guidelines` | Web Interface Guidelines |
 
 ### Backend & API
 | Skill | Description |
@@ -83,6 +105,7 @@ Domain-specific knowledge modules. Skills are loaded on-demand based on task con
 | Skill | Description |
 |-------|-------------|
 | `typescript-expert` | Type-level programming, performance |
+| `nextjs-react-expert` | React + Next.js optimization |
 
 ### Cloud & Infrastructure
 | Skill | Description |
@@ -98,13 +121,13 @@ Domain-specific knowledge modules. Skills are loaded on-demand based on task con
 | `webapp-testing` | E2E, Playwright |
 | `tdd-workflow` | Test-driven development |
 | `code-review-checklist` | Code review standards |
-| `lint-and-validate` | Linting, validation |
 
 ### Security
 | Skill | Description |
 |-------|-------------|
 | `vulnerability-scanner` | Security auditing, OWASP |
 | `red-team-tactics` | Offensive security |
+| `**security-review**` | **Practical OWASP checklist with code examples** |
 
 ### Architecture & Planning
 | Skill | Description |
@@ -113,6 +136,15 @@ Domain-specific knowledge modules. Skills are loaded on-demand based on task con
 | `architecture` | System design patterns |
 | `plan-writing` | Task planning, breakdown |
 | `brainstorming` | Socratic questioning |
+| `**search-first**` | **Research-before-coding workflow** |
+
+### Development Methodology (NEW from ECC)
+| Skill | Description |
+|-------|-------------|
+| `**coding-standards**` | **Immutability, KISS, DRY, YAGNI** |
+| `**git-workflow**` | **Conventional commits, PR process** |
+| `**continuous-learning**` | **Instinct-based pattern extraction** |
+| `**autonomous-loops**` | **Sequential pipeline, De-Sloppify patterns** |
 
 ### Mobile
 | Skill | Description |
@@ -147,10 +179,12 @@ Domain-specific knowledge modules. Skills are loaded on-demand based on task con
 | `i18n-localization` | Internationalization |
 | `performance-profiling` | Web Vitals, optimization |
 | `systematic-debugging` | Troubleshooting |
+| `intelligent-routing` | Auto agent selection |
+| `rust-pro` | Rust development |
 
 ---
 
-## 🔄 Workflows (11)
+## 🔄 Workflows (15)
 
 Slash command procedures. Invoke with `/command`.
 
@@ -167,6 +201,28 @@ Slash command procedures. Invoke with `/command`.
 | `/status` | Check project status |
 | `/test` | Run tests |
 | `/ui-ux-pro-max` | Design with 50 styles |
+| `/data-safety` | Data protection rules |
+| `**/code-review**` | **Systematic code review** |
+| `**/security-check**` | **Pre-deploy security scan** |
+| `**/learn**` | **Extract patterns from session** |
+
+---
+
+## 📐 Rules Structure
+
+```
+rules/
+├── GEMINI.md            # Master orchestrator config
+├── common/              # All languages
+│   ├── coding-style.md  # Immutability, KISS, DRY
+│   ├── git-workflow.md  # Commits, branches, PRs
+│   ├── security.md      # Mandatory security checks
+│   └── testing.md       # TDD, coverage targets
+├── python/              # Python-specific
+│   └── style.md         # PEP 8, type hints, async
+└── web/                 # JavaScript/TypeScript
+    └── style.md         # Strict TS, React, CSS
+```
 
 ---
 
@@ -190,24 +246,18 @@ skill-name/
 └── assets/            # (Optional) Images, logos
 ```
 
-### Enhanced Skills (with scripts/references)
-
-| Skill | Files | Coverage |
-|-------|-------|----------|
-| `typescript-expert` | 5 | Utility types, tsconfig, cheatsheet |
-| `ui-ux-pro-max` | 27 | 50 styles, 21 palettes, 50 fonts |
-| `app-builder` | 20 | Full-stack scaffolding |
-
 ---
 
 ## 📊 Statistics
 
 | Metric | Value |
 |--------|-------|
-| **Total Agents** | 16 |
-| **Total Skills** | 40 |
-| **Total Workflows** | 11 |
-| **Coverage** | ~90% web/mobile development |
+| **Total Agents** | 23 |
+| **Total Skills** | 50 |
+| **Total Workflows** | 15 |
+| **Rule Categories** | 3 (common, python, web) |
+| **Coverage** | ~95% web/mobile/python development |
+| **ECC Integration** | ✅ Cherry-picked best practices |
 
 ---
 
@@ -217,9 +267,14 @@ skill-name/
 |------|-------|--------|
 | Web App | `frontend-specialist` | react-patterns, nextjs-best-practices |
 | API | `backend-specialist` | api-patterns, nodejs-best-practices |
+| Python | `backend-specialist` | python-patterns, database-design |
 | Mobile | `mobile-developer` | mobile-design |
 | Database | `database-architect` | database-design, prisma-expert |
-| Security | `security-auditor` | vulnerability-scanner |
+| Security | `security-auditor` | vulnerability-scanner, security-review |
 | Testing | `test-engineer` | testing-patterns, webapp-testing |
 | Debug | `debugger` | systematic-debugging |
 | Plan | `project-planner` | brainstorming, plan-writing |
+| Code Review | `code-reviewer` | security-review, coding-standards |
+| Research | `researcher` | search-first, architecture |
+| Refactor | `refactorer` | coding-standards, clean-code |
+| Learn | - | continuous-learning |
