@@ -15,12 +15,29 @@ class MockDB:
     def __init__(self):
         self.processed = []
         
-    async def _fetch_one(self, query, params):
-        if "processed_webhooks" in query:
-            for p in self.processed:
-                if p["reference_code"] == params[0]:
-                    return p
+    async def get_processed_webhook(self, reference_code):
+        for p in self.processed:
+            if p["reference_code"] == reference_code:
+                return p
         return None
+
+    async def get_deposit_by_id(self, deposit_id):
+        return {"id": deposit_id, "user_id": 1, "status": "pending"}
+
+    async def get_user_by_id(self, user_id):
+        return {"telegram_id": 999999, "full_name": "Test User"}
+
+    async def complete_deposit(self, deposit_id, reference_code):
+        pass
+
+    async def update_balance(self, telegram_id, amount):
+        return 10000
+
+    async def add_transaction(self, **kwargs):
+        pass
+
+    async def check_and_pay_referral_bonus(self, user_id, amount):
+        return 0
 
     class MockConn:
         async def execute(self, query, params):

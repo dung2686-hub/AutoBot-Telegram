@@ -55,9 +55,7 @@ async def _claim_webhook(db, reference_code: str, prefix: str, code_id: str, amo
     await db.conn.commit()
     if cursor.rowcount == 1:
         return True
-    existing = await db._fetch_one(
-        "SELECT status FROM processed_webhooks WHERE reference_code = ?", (reference_code,)
-    )
+    existing = await db.get_processed_webhook(reference_code)
     if not existing:
         return False
     if existing["status"] == "completed":
@@ -175,17 +173,13 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         deposit_id = int(code_id)
         sender_name = esc(data.get("senderName", "N/A"))
 
-        deposit_row = await db._fetch_one(
-            "SELECT * FROM deposits WHERE id = ? AND status IN ('pending', 'expired')",
-            (deposit_id,)
-        )
+        deposit_row = await db.get_deposit_by_id(deposit_id)
+
+        # Check if deposit exists and is still valid to claim
+        if not deposit_row or deposit_row.get("status") not in ("pending", "expired"):
+            # If it's already completed, check if we need to alert admin about duplicate
+            completed_row = deposit_row if deposit_row and deposit_row.get("status") == "completed" else None
             
-        if not deposit_row:
-            # Check if it's a duplicate payment for already-completed deposit
-            completed_row = await db._fetch_one(
-                "SELECT * FROM deposits WHERE id = ? AND status = 'completed'",
-                (deposit_id,)
-            )
             if completed_row and bot_app and config.admin_chat_id:
                 try:
                     from src.utils.formatters import format_vnd, now_vn
@@ -208,7 +202,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             return web.json_response({"success": True})
 
         deposit = dict(deposit_row)
-        user_row = await db._fetch_one("SELECT telegram_id, full_name FROM users WHERE id = ?", (deposit["user_id"],))
+        user_row = await db.get_user_by_id(deposit["user_id"])
         if not user_row:
             await _mark_webhook(db, reference_code, "completed")
             return web.json_response({"success": True})
@@ -294,7 +288,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             await _mark_webhook(db, reference_code, "completed")
             return web.json_response({"success": True})
 
-        user_row = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
+        user_row = await db.get_user_by_id(order["user_id"])
         telegram_id = user_row["telegram_id"] if user_row else None
         
         from src.utils.formatters import format_vnd
@@ -344,7 +338,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             await _mark_webhook(db, reference_code, "completed")
             return web.json_response({"success": True})
 
-        user_row = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
+        user_row = await db.get_user_by_id(order["user_id"])
         telegram_id = user_row["telegram_id"] if user_row else None
         
         try:
@@ -437,10 +431,10 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         pass
         except Exception as e:
             logger.exception("Failed handling MUA %d: %s", order_id, e)
-            await _mark_webhook(reference_code, "failed")
+            await _mark_webhook(db, reference_code, "failed")
             return web.json_response({"success": False, "error": str(e)}, status=500)
 
-    await _mark_webhook(reference_code, "completed")
+    await _mark_webhook(db, reference_code, "completed")
     return web.json_response({"success": True})
 
 

@@ -87,8 +87,7 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cost = product.get("walletPricing", 0)
     
     db = context.bot_data["db"]
-    m_row = await db._fetch_one("SELECT is_active FROM product_markups WHERE product_id = ?", (product_id,))
-    is_active = m_row["is_active"] if m_row else 1
+    is_active = await db.get_product_markup_status(product_id)
     status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
     
     from src.handlers.shop import calc_sell_price, calc_min_sell
@@ -214,9 +213,8 @@ async def markup_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
     
-    row = await db._fetch_one("SELECT is_active FROM product_markups WHERE product_id = ?", (product_id,))
-    current_active = row["is_active"] if row else 1
-    new_active = 0 if current_active else 1
+    is_active = await db.get_product_markup_status(product_id)
+    new_active = 0 if is_active else 1
     
     product = canboso.find_product(product_id)
     name = product.get("product_name", product_id) if product else product_id

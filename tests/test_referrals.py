@@ -18,10 +18,10 @@ class MockDB:
             return int(total_amount * 0.1)
         return 0
 
-    async def _fetch_one(self, query, params):
-        if "referred_by FROM users" in query:
+    async def get_user_by_id(self, user_id):
+        if user_id == 1:
             return {"full_name": "Buyer Name", "referred_by": 99}
-        if "telegram_id, full_name" in query:
+        if user_id == 99:
             return {"telegram_id": 999999, "full_name": "Referrer Name"}
         return None
 

@@ -133,6 +133,26 @@ class Database:
         row = await self._fetch_one("SELECT COUNT(*) as cnt FROM users")
         return row["cnt"] if row else 0
 
+    async def get_user_by_id(self, user_id: int) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM users WHERE id = ?", (user_id,))
+        return dict(row) if row else None
+
+    async def get_deposit_by_id(self, deposit_id: int) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM deposits WHERE id = ?", (deposit_id,))
+        return dict(row) if row else None
+
+    async def get_deposit_by_code(self, code: str) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM deposits WHERE code = ?", (code,))
+        return dict(row) if row else None
+
+    async def get_processed_webhook(self, reference_code: str) -> Optional[dict]:
+        row = await self._fetch_one("SELECT * FROM processed_webhooks WHERE reference_code = ?", (reference_code,))
+        return dict(row) if row else None
+
+    async def get_product_markup_status(self, product_id: str) -> bool:
+        row = await self._fetch_one("SELECT is_active FROM product_markups WHERE product_id = ?", (product_id,))
+        return bool(row["is_active"]) if row else True
+
     async def check_and_pay_referral_bonus(self, user_id: int, order_amount: int) -> int:
         """
         Check if this is the first completed order for the user.

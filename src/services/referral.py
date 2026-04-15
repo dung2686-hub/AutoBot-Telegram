@@ -16,11 +16,11 @@ async def process_referral_bonus(db, bot_app, order_id: int, user_id: int, total
             return False
             
         # Get user details for notifications
-        buyer = await db._fetch_one("SELECT full_name, referred_by FROM users WHERE id = ?", (user_id,))
+        buyer = await db.get_user_by_id(user_id)
         if not buyer or not buyer["referred_by"]:
             return True # Edge case: bonus paid but user data missing
 
-        referrer = await db._fetch_one("SELECT telegram_id, full_name FROM users WHERE id = ?", (buyer["referred_by"],))
+        referrer = await db.get_user_by_id(buyer["referred_by"])
         
         if not referrer:
             return True

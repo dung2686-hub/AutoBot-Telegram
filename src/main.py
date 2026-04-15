@@ -164,7 +164,7 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
             # Expire deposits
             expired_deposits = await db.expire_old_deposits()
             for deposit in expired_deposits:
-                user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (deposit["user_id"],))
+                user = await db.get_user_by_id(deposit["user_id"])
                 if user and user["telegram_id"]:
                     try:
                         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -191,7 +191,7 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
             # Default to 5 minutes expiration for QR orders
             expired_orders = await db.expire_old_orders(minutes=5)
             for order in expired_orders:
-                user = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (order["user_id"],))
+                user = await db.get_user_by_id(order["user_id"])
                 if user and user["telegram_id"]:
                     try:
                         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
