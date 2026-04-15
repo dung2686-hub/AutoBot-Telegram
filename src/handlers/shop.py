@@ -22,14 +22,23 @@ def _round_up_1000(price: int) -> int:
     return int(math.ceil(price / 1000) * 1000)
 
 
+def get_tier_markup(cost_price: int) -> int:
+    """Xác định tỷ lệ markup % dựa trên giá vốn."""
+    if cost_price < 100000:
+        return 30
+    return 25
+
+
 def calc_min_sell(cost_price: int) -> int:
-    """Giá bán tối thiểu: lãi 15k hoặc 30%, tùy cái nào lớn hơn."""
-    return max(cost_price + 15000, int(cost_price * 1.30))
+    """Giá bán tối thiểu: lãi 15k hoặc % theo bậc thang, tùy cái nào lớn hơn."""
+    tier_pct = get_tier_markup(cost_price)
+    return max(cost_price + 15000, int(cost_price * (1 + tier_pct / 100)))
 
 
 async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
-    """Calculate sell price from markup settings. Guarantees min 15k or 30% profit."""
-    m = await db.get_markup(product_id, config.default_markup_percent)
+    """Calculate sell price from markup settings. Guarantees min 15k or tiered profit."""
+    tier_pct = get_tier_markup(cost_price)
+    m = await db.get_markup(product_id, tier_pct)
     markup_price = int(cost_price * (1 + m["markup_percent"] / 100))
     
     min_sell = calc_min_sell(cost_price)

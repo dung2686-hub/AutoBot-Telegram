@@ -1,6 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
-from src.handlers.shop import calc_min_sell, calc_sell_price
+from src.handlers.shop import calc_min_sell, calc_sell_price, get_tier_markup
 from src.config import config
 from src.utils.decorators import ensure_user, admin_only, error_handler
 from src.utils.formatters import format_vnd, esc
@@ -22,7 +22,7 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
-    text += f"Mặc định: {config.default_markup_percent}%\n"
+    text += "Bậc thang: <100k (30%), >100k (25%)\n"
     text += "━━━━━━━━━━━━━━━━━━\n"
 
     keyboard = []
@@ -34,7 +34,8 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         m = markup_map.get(pid, {})
         fixed = m.get("fixed_price", 0)
-        pct = m.get("markup_percent", config.default_markup_percent)
+        tier_pct = get_tier_markup(cost)
+        pct = m.get("markup_percent", tier_pct)
         is_active = m.get("is_active", 1)
         
         status_icon = "🟢" if is_active else "🔴"
@@ -93,7 +94,8 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     sell_price = await calc_sell_price(db, product_id, cost)
     min_sell = calc_min_sell(cost)
-    m = await db.get_markup(product_id, config.default_markup_percent)
+    tier_pct = get_tier_markup(cost)
+    m = await db.get_markup(product_id, tier_pct)
     if m["fixed_price"] > 0:
         price_mode_str = "Cố định"
     else:
