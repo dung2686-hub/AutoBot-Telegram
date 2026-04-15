@@ -183,16 +183,24 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             
             if completed_row and bot_app and config.admin_chat_id:
                 try:
+                    user_info_str = "Không tìm thấy User"
+                    user_row = await db.get_user_by_id(completed_row["user_id"])
+                    if user_row:
+                        telegram_id = user_row["telegram_id"]
+                        user_name = esc(user_row["full_name"] or "N/A")
+                        user_info_str = f"<b>{user_name}</b> (<code>{telegram_id}</code>)"
+
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     alert_msg = (
-                        f"⚠️ <b>CẢNH BÁO: Nạp tiền trùng!</b>\n\n"
+                        f"⚠️ <b>CẢNH BÁO: Nạp tiền đúp/trùng mã!</b>\n\n"
                         f"Lệnh <b>NAP{deposit_id}</b> đã hoàn tất trước đó,\n"
                         f"nhưng vừa nhận thêm <b>{format_vnd(amount)}</b>.\n\n"
+                        f"👤 Chủ đơn: {user_info_str}\n"
                         f"🏦 Người chuyển: <b>{sender_name}</b>\n"
                         f"📝 Nội dung: <code>{esc(content)}</code>\n"
                         f"🔖 Mã GD: <code>{esc(reference_code)}</code>\n"
                         f"⏰ {time_str}\n\n"
-                        f"💡 Tiền đã vào bank. Kiểm tra sao kê để xử lý."
+                        f"💡 Dùng lệnh <code>/checkuser {user_row['telegram_id'] if user_row else ''}</code> để xử lý."
                     )
                     await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=alert_msg, parse_mode="HTML")
                 except Exception as e:
