@@ -36,7 +36,7 @@ def admin_only(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user = update.effective_user
-        if not user or user.id != config.admin_chat_id:
+        if not user or user.id not in config.admin_chat_ids:
             lang = context.user_data.get("lang", "vi")
             if update.callback_query:
                 await update.callback_query.answer(t("error_not_admin", lang), show_alert=True)

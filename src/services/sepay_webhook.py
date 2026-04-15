@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from collections import defaultdict
 
 from aiohttp import web
 
@@ -7,6 +9,25 @@ from src.config import config
 from src.utils.formatters import esc
 
 logger = logging.getLogger(__name__)
+
+# ── Rate Limiting ─────────────────────────────────────────
+MAX_REQUESTS_PER_MINUTE = 30
+MAX_TRANSFER_AMOUNT = 50_000_000  # 50M VND safety cap
+
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_rate_limited(client_ip: str) -> bool:
+    """Simple IP-based rate limiter. Returns True if request should be rejected."""
+    now = time.time()
+    window = 60  # 1 minute window
+    timestamps = _rate_limit_store[client_ip]
+    # Prune old entries
+    _rate_limit_store[client_ip] = [ts for ts in timestamps if now - ts < window]
+    if len(_rate_limit_store[client_ip]) >= MAX_REQUESTS_PER_MINUTE:
+        return True
+    _rate_limit_store[client_ip].append(now)
+    return False
 
 # This will be set from main.py
 _bot_app = None
@@ -68,13 +89,19 @@ async def _mark_webhook(reference_code: str, status: str):
 async def handle_sepay_webhook(request: web.Request) -> web.Response:
     """Handle incoming SePay webhook for bank transfer verification."""
 
+    # ── Rate Limiting ──
+    client_ip = request.remote or "unknown"
+    if _is_rate_limited(client_ip):
+        logger.warning("SePay webhook: rate limited IP %s", client_ip)
+        return web.json_response({"success": False, "error": "Rate limited"}, status=429)
+
     # Verify secret key — MANDATORY, reject if key not configured or mismatch
     secret = request.headers.get("Authorization", "") or request.headers.get("X-Secret-Key", "")
     if not config.sepay_secret_key:
         logger.error("SePay webhook: SEPAY_SECRET_KEY not configured! Rejecting all requests.")
         return web.json_response({"success": False, "error": "Webhook key not configured"}, status=500)
     if secret != config.sepay_secret_key:
-        logger.warning("SePay webhook: invalid secret key")
+        logger.warning("SePay webhook: invalid secret key from %s", client_ip)
         return web.json_response({"success": False}, status=401)
 
     try:
@@ -82,19 +109,40 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
     except json.JSONDecodeError:
         return web.json_response({"success": False}, status=400)
 
-    logger.info("SePay webhook received: %s", json.dumps(data, ensure_ascii=False))
-
+    # ── Sanitized logging (Sec 1) — only log safe fields ──
     transfer_type = data.get("transferType")
-    if transfer_type != "in":
-        # Ignore outgoing transfers
-        return web.json_response({"success": True})
-
     content = data.get("content", "").upper()
     amount = data.get("transferAmount", 0)
     reference_code = data.get("referenceCode", "")
+    logger.info(
+        "SePay webhook: type=%s amount=%s content=%s ref=%s",
+        transfer_type, amount, content, reference_code,
+    )
+
+    if transfer_type != "in":
+        return web.json_response({"success": True})
 
     if not amount:
         logger.warning("SePay webhook: missing amount")
+        return web.json_response({"success": True})
+
+    # ── Amount bounds validation (Sec 4) ──
+    if amount > MAX_TRANSFER_AMOUNT:
+        logger.warning("SePay webhook: amount %d exceeds safety cap %d", amount, MAX_TRANSFER_AMOUNT)
+        if _bot_app and config.admin_chat_id:
+            try:
+                from src.utils.formatters import format_vnd
+                alert = (
+                    f"🚨 <b>CẢNH BÁO: Giao dịch vượt giới hạn!</b>\n\n"
+                    f"💰 Số tiền: <b>{format_vnd(amount)}</b>\n"
+                    f"📝 Nội dung: <code>{esc(content)}</code>\n"
+                    f"🔖 Ref: <code>{esc(reference_code)}</code>\n\n"
+                    f"⚠️ Giao dịch bị từ chối tự động. Kiểm tra sao kê ngân hàng."
+                )
+                for admin_id in config.admin_chat_ids:
+                    await _bot_app.bot.send_message(chat_id=admin_id, text=alert, parse_mode="HTML")
+            except Exception:
+                pass
         return web.json_response({"success": True})
 
     import re

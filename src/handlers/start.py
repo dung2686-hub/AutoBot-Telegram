@@ -67,9 +67,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"4. Sau khi thanh toán xong, bot sẽ tự động xử lý đơn hàng."
     )
     
-    msg4 = f"📌 Vui lòng chọn menu:"
+    lang = context.user_data.get("lang", "vi")
+    msg4 = t("menu_prompt", lang) if t("menu_prompt", lang) != "menu_prompt" else "📌 Vui lòng chọn menu:"
     
-    keyboard = main_menu_keyboard(lang="vi")
+    keyboard = main_menu_keyboard(lang=lang)
 
     # Send blocks sequentially
     await update.message.reply_text(msg1, disable_web_page_preview=True, parse_mode="HTML")
@@ -85,8 +86,9 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
 
+    lang = context.user_data.get("lang", "vi")
     text = f"📌 Vui lòng chọn menu:"
-    keyboard = main_menu_keyboard(lang="vi")
+    keyboard = main_menu_keyboard(lang=lang)
 
     try:
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")

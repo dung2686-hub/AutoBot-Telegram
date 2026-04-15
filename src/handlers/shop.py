@@ -206,6 +206,7 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    db_user = context.user_data["db_user"]
     sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
     total = sell_price * quantity
     balance = db_user["balance"]

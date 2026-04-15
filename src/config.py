@@ -9,7 +9,10 @@ load_dotenv()
 class Config:
     # Telegram
     bot_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
-    admin_chat_id: int = field(default_factory=lambda: int(os.getenv("ADMIN_CHAT_ID", "0")))
+    admin_chat_id: int = field(default_factory=lambda: int(os.getenv("ADMIN_CHAT_ID", "0").split(",")[0].strip()))
+    admin_chat_ids: set = field(default_factory=lambda: {
+        int(x.strip()) for x in os.getenv("ADMIN_CHAT_ID", "0").split(",") if x.strip().isdigit() and int(x.strip()) != 0
+    })
 
     # Canboso
     canboso_api_key: str = field(default_factory=lambda: os.getenv("CANBOSO_API_KEY", ""))

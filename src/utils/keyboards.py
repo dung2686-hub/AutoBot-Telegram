@@ -21,14 +21,6 @@ def main_menu_keyboard(lang: str = "vi", admin: bool = False) -> InlineKeyboardM
     ]
     return InlineKeyboardMarkup(k)
 
-def language_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🇻🇳 Tiếng Việt", callback_data="lang:vi")],
-        [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
-        [InlineKeyboardButton("🔙 Quay lại / Back", callback_data="menu:main")],
-    ])
-
-
 def back_to_menu_keyboard(lang: str = "vi") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_back_menu", lang), callback_data="menu:main")],

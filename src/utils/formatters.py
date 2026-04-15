@@ -104,5 +104,7 @@ def tx_icon(tx_type: str) -> str:
         "purchase": "🛒",
         "refund": "↩️",
         "admin_credit": "🔧",
+        "admin_debit": "➖",
+        "referral_bonus": "🎁",
     }
     return icons.get(tx_type, "📋")
