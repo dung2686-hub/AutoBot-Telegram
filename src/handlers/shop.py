@@ -486,29 +486,8 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     )
 
     # Check and pay referral bonus
-    try:
-        bonus = await db.check_and_pay_referral_bonus(user["id"], total)
-        if bonus > 0:
-            referrer = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
-            if referrer and referrer["telegram_id"]:
-                from src.utils.formatters import format_vnd as _fv
-                msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{_fv(bonus)}</b> vào ví."
-                await context.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
-            # Notify admin about referral bonus
-            if config.admin_chat_id:
-                referrer_user = await db.get_user(referrer["telegram_id"]) if referrer else None
-                referrer_name = esc(referrer_user.get("full_name", "N/A")) if referrer_user else "N/A"
-                buyer_name = esc(user.get("full_name", "N/A"))
-                admin_ref_msg = (
-                    f"🎁 <b>Referral Bonus</b>\n\n"
-                    f"👤 Người nhận: <b>{referrer_name}</b>\n"
-                    f"👥 Từ khách: <b>{buyer_name}</b>\n"
-                    f"💰 Bonus: <b>{format_vnd(bonus)}</b> (10%)\n"
-                    f"📦 Đơn: {format_vnd(total)}"
-                )
-                await context.bot.send_message(chat_id=config.admin_chat_id, text=admin_ref_msg, parse_mode="HTML")
-    except Exception as ref_err:
-        logger.warning("Referral bonus error (non-critical): %s", ref_err)
+    from src.services.referral import process_referral_bonus
+    await process_referral_bonus(db, context.application, order["id"], user["id"], total)
 
     # === SEND RESULT — use send_message (same as QR flow which works) ===
     from src.utils.formatters import format_account_list

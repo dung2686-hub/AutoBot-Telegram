@@ -75,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_deposits_code ON deposits(code);
 CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE TABLE IF NOT EXISTS processed_webhooks (
     reference_code  TEXT PRIMARY KEY,

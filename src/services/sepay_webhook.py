@@ -405,30 +405,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
                 )
                 # Check and pay referral bonus
-                bonus = await db.check_and_pay_referral_bonus(order["user_id"], order["total_amount"])
-                if bonus > 0 and bot_app:
-                    referrer = await db._fetch_one("SELECT telegram_id FROM users WHERE id = ?", (user["referred_by"],))
-                    if referrer and referrer["telegram_id"]:
-                        try:
-                            msg_ref = f"🎉 <b>Chúc mừng!</b>\nNgười bạn giới thiệu vừa hoàn thành đơn hàng đầu tiên. Bạn được cộng <b>{format_vnd(bonus)}</b> vào ví."
-                            await bot_app.bot.send_message(chat_id=referrer["telegram_id"], text=msg_ref, parse_mode="HTML")
-                        except Exception:
-                            pass
-                    # Notify admin about referral bonus
-                    if config.admin_chat_id:
-                        try:
-                            referrer_name = esc((await db.get_user(referrer["telegram_id"])).get("full_name", "N/A")) if referrer else "N/A"
-                            buyer_name = esc(user.get("full_name", "N/A") if user else "N/A")
-                            admin_ref_msg = (
-                                f"🎁 <b>Referral Bonus</b>\n\n"
-                                f"👤 Người nhận: <b>{referrer_name}</b>\n"
-                                f"👥 Từ khách: <b>{buyer_name}</b> (đơn MUA{order_id})\n"
-                                f"💰 Bonus: <b>{format_vnd(bonus)}</b> (10%)\n"
-                                f"📦 Đơn: {format_vnd(order['total_amount'])}"
-                            )
-                            await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_ref_msg, parse_mode="HTML")
-                        except Exception:
-                            pass
+                from src.services.referral import process_referral_bonus
+                await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
                 if bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,
