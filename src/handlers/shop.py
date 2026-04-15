@@ -39,11 +39,14 @@ async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
     """Calculate sell price from markup settings. Guarantees min 15k or tiered profit."""
     tier_pct = get_tier_markup(cost_price)
     m = await db.get_markup(product_id, tier_pct)
-    markup_price = int(cost_price * (1 + m["markup_percent"] / 100))
-    
+
+    # Sử dụng markup từ DB, nhưng ép sàn tối thiểu bằng tỷ lệ bậc thang
+    effective_pct = max(m["markup_percent"], tier_pct)
+    markup_price = int(cost_price * (1 + effective_pct / 100))
+
     min_sell = calc_min_sell(cost_price)
     markup_price = max(markup_price, min_sell)
-    
+
     if m["fixed_price"] > 0:
         return max(m["fixed_price"], min_sell)
     return _round_up_1000(markup_price)
