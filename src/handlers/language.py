@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
 from src.utils.keyboards import language_keyboard, main_menu_keyboard
+from src.handlers.start import BOT_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,6 @@ async def language_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["db_user"] = db_user
 
     text = t("language_changed", new_lang)
-    from src.handlers.start import BOT_NAME
     welcome = t("welcome", new_lang, bot_name=BOT_NAME)
 
     await query.edit_message_text(

@@ -7,7 +7,8 @@ from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
 from src.utils.formatters import esc
-from src.utils.keyboards import main_menu_keyboard
+from src.utils.keyboards import main_menu_keyboard, language_keyboard
+from src.utils.formatters import format_account_list, format_vnd, esc
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,6 @@ async def language_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     
     # We can fetch the current user's lang, but let's just show options
-    from src.utils.keyboards import language_keyboard
     text = "🌐 Vui lòng chọn ngôn ngữ / Please select your language:"
     await query.edit_message_text(text, reply_markup=language_keyboard(), parse_mode="HTML")
 
@@ -121,7 +121,6 @@ async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await db.set_user_language(telegram_id, lang)
     
     # After setting language, reload main menu
-    from src.utils.keyboards import main_menu_keyboard
     text = f"✅ Ngôn ngữ đã được thay đổi / Language has been changed.\n\n📌 Vui lòng chọn menu:"
     keyboard = main_menu_keyboard(lang=lang)
     try:

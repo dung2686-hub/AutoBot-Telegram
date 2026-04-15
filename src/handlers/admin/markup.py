@@ -1,5 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
+from src.handlers.shop import calc_min_sell, calc_sell_price
 from src.config import config
 from src.utils.decorators import ensure_user, admin_only, error_handler
 from src.utils.formatters import format_vnd, esc
@@ -90,9 +91,8 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_active = await db.get_product_markup_status(product_id)
     status_text = "🟢 Đang hiển thị" if is_active else "🔴 Đã bị ẩn"
     
-    from src.handlers.shop import calc_sell_price, calc_min_sell
-    current_sell_price = await calc_sell_price(db, product_id, cost)
-    min_sell = calc_min_sell(cost)
+    sell_price = await calc_sell_price(db, product_id, cost)
+    min_sell = await calc_min_sell(db, product_id, cost)
     m = await db.get_markup(product_id, config.default_markup_percent)
     if m["fixed_price"] > 0:
         price_mode_str = "Cố định"
@@ -107,7 +107,7 @@ async def markup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Trạng thái: <b>{status_text}</b>\n"
         f"💰 Giá gốc hệ thống: <b>{format_vnd(cost)}</b>\n"
         f"🛡️ Giá bán tối thiểu: <b>{format_vnd(min_sell)}</b>\n"
-        f"💵 Giá bán HIỆN TẠI: <b>{format_vnd(current_sell_price)}</b> ({price_mode_str})"
+        f"💵 Giá bán HIỆN TẠI: <b>{format_vnd(sell_price)}</b> ({price_mode_str})"
         f"{note_preview}\n\n"
         f"Nhập <b>% Markup</b> (ví dụ: <code>20</code>)\n"
         f"Hoặc nhập <b>Giá cố định</b> (kèm dấu =, ví dụ: <code>={min_sell}</code>):"
@@ -160,8 +160,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await db.set_markup(product_id, name, 0, fixed_price)
         
-        from src.handlers.shop import calc_min_sell
-        min_sell = calc_min_sell(cost)
+        min_sell = await calc_min_sell(db, product_id, cost)
         actual_sell = max(fixed_price, min_sell)
         
         await update.message.reply_text(
@@ -181,8 +180,7 @@ async def markup_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if cost:
             calc_sell = int(cost * (1 + markup / 100))
-            from src.handlers.shop import calc_min_sell
-            min_sell = calc_min_sell(cost)
+            min_sell = await calc_min_sell(db, product_id, cost)
             actual_sell = max(calc_sell, min_sell)
             sell_str = format_vnd(actual_sell)
         else:

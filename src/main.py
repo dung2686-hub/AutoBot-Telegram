@@ -15,19 +15,21 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
 )
+from telegram import BotCommand, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
 
 from src.config import config
 from src.database.db import Database
 from src.services.canboso import CanbosoClient
 from src.services import sepay_webhook
 
-from src.handlers.start import start_command, main_menu_callback
+from src.handlers.start import start_command, main_menu_callback, language_menu_callback, set_language_callback, api_menu_callback
 from src.handlers.shop import shop_menu, product_detail, quantity_change, buy_confirm, execute_purchase, qr_pay_setup, custom_product_detail
 from src.handlers.wallet import wallet_menu, transaction_history, get_deposit_conversation
 from src.handlers.profile import profile_menu
 from src.handlers.history import history_menu, history_detail
 from src.handlers.support import get_support_conversation
 from src.handlers.admin import admin_command, admin_refresh, backup_command, get_admin_conversation
+from src.utils.formatters import format_vnd, now_vn, shorten_product_name
 
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -56,8 +58,7 @@ async def post_init(application: Application):
     scheduler = await run_scheduler(application, db, canboso)
     application.bot_data["scheduler"] = scheduler
 
-    # Set bot commands (shows in Menu)
-    from telegram import BotCommand, MenuButtonCommands
+    # Register commands
     await application.bot.set_my_commands([
         BotCommand("start", "Bắt đầu và xem menu"),
         BotCommand("admin", "Admin dashboard"),
@@ -107,7 +108,7 @@ def build_application() -> Application:
 
     # ── Callback Query Handlers ───────────────────────────
     # Main menu
-    from src.handlers.start import language_menu_callback, set_language_callback, api_menu_callback
+    app.add_handler(CallbackQueryHandler(start_command, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(main_menu_callback, pattern=r"^menu:main$"))
     app.add_handler(CallbackQueryHandler(language_menu_callback, pattern=r"^menu:language$"))
     app.add_handler(CallbackQueryHandler(api_menu_callback, pattern=r"^menu:api$"))
@@ -167,12 +168,10 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 user = await db.get_user_by_id(deposit["user_id"])
                 if user and user["telegram_id"]:
                     try:
-                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                        from src.utils.formatters import format_vnd as _fv
                         dep_amount = deposit.get('amount', 0)
                         msg = (
                             f"⏱ <b>Yêu cầu nạp ví NAP{deposit['id']} đã hết hạn!</b>\n\n"
-                            f"💰 Số tiền: <b>{_fv(dep_amount)}</b>\n\n"
+                            f"💰 Số tiền: <b>{format_vnd(dep_amount)}</b>\n\n"
                             f"Đơn nạp bị hủy do chưa nhận được thanh toán trong {config.deposit_expire_minutes} phút.\n"
                             f"⚠️ <i>Nếu bạn đã chuyển khoản, hệ thống sẽ tự động cộng tiền vào ví khi nhận được.</i>"
                         )
@@ -194,8 +193,6 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 user = await db.get_user_by_id(order["user_id"])
                 if user and user["telegram_id"]:
                     try:
-                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                        from src.utils.formatters import format_vnd
                         product_name = order.get('product_name', 'Sản phẩm')
                         total = order.get('total_amount', 0)
                         msg = (
@@ -229,7 +226,6 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
             # WAL checkpoint — flush WAL to main DB for clean backup
             await db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
-            from src.utils.formatters import now_vn
             vn_now = now_vn()
             timestamp = vn_now.strftime("%Y%m%d_%H%M")
             backup_path = db_path.parent / f"bot_backup_{timestamp}.db"
@@ -270,13 +266,10 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
                 return
 
             msg = "🚀 <b>HÀNG MỚI VỪA VỀ</b>\n\n"
-            from src.utils.formatters import shorten_product_name
             for r in restocks:
                 short_name = shorten_product_name(r['name'])
                 msg += f"📦 <b>{short_name}</b>\n➕ Thêm: {r['added']}\n📦 Tồn kho hiện tại: {r['total']}\n\n"
             msg += "👉 Mở Menu Hoặc Bấm Nút Mua Ngay Bên Dưới Nhé!"
-
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
             if len(restocks) == 1:
                 pid = restocks[0]['product_id']
@@ -311,7 +304,6 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
         try:
             if not config.admin_chat_id:
                 return
-            from src.utils.formatters import format_vnd, now_vn
             stats = await db.get_daily_stats()
             total_users = await db.count_users()
             date_str = now_vn().strftime("%d/%m/%Y")

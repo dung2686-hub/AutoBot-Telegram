@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 
 from telegram import Update
 from telegram.ext import (
@@ -13,8 +14,9 @@ from telegram.ext import (
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
-from src.utils.formatters import format_vnd, format_date, tx_icon
+from src.utils.formatters import format_vnd, format_date, tx_icon, esc
 from src.utils.keyboards import wallet_keyboard, back_to_menu_keyboard
+from src.services.vietqr import generate_qr_image, get_bank_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +79,6 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
         return ENTER_AMOUNT
 
     # Save pending deposit first to get ID
-    import time
     temp_code = f"PENDING_{int(time.time() * 1000)}"
     deposit = await db.create_deposit(
         user_id=db_user["id"],
@@ -91,7 +92,6 @@ async def deposit_amount_received(update: Update, context: ContextTypes.DEFAULT_
     await db.conn.commit()
 
     # Generate QR image with 3-tier fallback (URL → API → offline)
-    from src.services.vietqr import generate_qr_image, get_bank_display_name
     qr_bytes = await generate_qr_image(amount, code)
     bank_display = get_bank_display_name(config.bank_bin)
 

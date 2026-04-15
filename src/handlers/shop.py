@@ -1,14 +1,18 @@
 import logging
 import math
+import io
+from urllib.parse import quote
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
 
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
-from src.utils.formatters import format_vnd, shorten_product_name, esc
-from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, confirm_cancel_keyboard
+from src.utils.formatters import format_vnd, shorten_product_name, esc, format_account_list, now_vn
+from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, confirm_cancel_keyboard, payment_options_keyboard
+from src.services.vietqr import generate_qr_image, get_bank_display_name
+from src.services.referral import process_referral_bonus
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +223,6 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance=format_vnd(balance),
     )
 
-    from src.utils.keyboards import payment_options_keyboard
     keyboard = payment_options_keyboard(product_id, quantity, lang)
     
     # Prompt the user to select a payment method
@@ -273,8 +276,6 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_code_mem = f"MUA{order_id}"
 
     # Validate bank config
-    from src.services.vietqr import generate_qr_image, get_bank_display_name
-
     if not config.bank_bin or not config.bank_account:
         await query.edit_message_text(
             "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
@@ -486,11 +487,9 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     )
 
     # Check and pay referral bonus
-    from src.services.referral import process_referral_bonus
     await process_referral_bonus(db, context.application, order["id"], user["id"], total)
 
     # === SEND RESULT — use send_message (same as QR flow which works) ===
-    from src.utils.formatters import format_account_list
     accounts_text = format_account_list(delivered, lang)
 
     text = t("purchase_success", lang,

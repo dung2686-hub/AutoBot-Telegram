@@ -3,10 +3,13 @@ import logging
 import time
 from collections import defaultdict
 
+import re
 from aiohttp import web
-
 from src.config import config
-from src.utils.formatters import esc
+from src.utils.formatters import format_vnd, now_vn, esc, format_account_list
+from src.i18n import t
+from src.services.referral import process_referral_bonus
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +157,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 pass
         return web.json_response({"success": True})
 
-    import re
     match = re.search(r"(NAP|MUA)[\s_]*(\d+)", content)
     if not match:
         logger.warning("SePay webhook: no matching prefix (NAP/MUA) in content: %s", content)
@@ -182,7 +184,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             
             if completed_row and bot_app and config.admin_chat_id:
                 try:
-                    from src.utils.formatters import format_vnd, now_vn
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     alert_msg = (
                         f"⚠️ <b>CẢNH BÁO: Nạp tiền trùng!</b>\n\n"
@@ -222,8 +223,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
 
             if bot_app:
                 try:
-                    from src.i18n import t
-                    from src.utils.formatters import format_vnd
                     user = await db.get_user(telegram_id)
                     lang = user.get("language", "vi") if user else "vi"
                     msg = t("deposit_success", lang, amount=format_vnd(amount), balance=format_vnd(new_balance))
@@ -236,7 +235,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             # ADMIN: Notify every deposit with senderName for fraud detection
             if bot_app and config.admin_chat_id:
                 try:
-                    from src.utils.formatters import format_vnd, now_vn
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     late = " ⏱ (trễ)" if deposit['status'] != 'pending' else ""
                     admin_msg = (
@@ -269,7 +267,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             logger.warning("SePay MUA webhook: order %d already completed, duplicate payment of %d", order_id, amount)
             if bot_app and config.admin_chat_id:
                 try:
-                    from src.utils.formatters import format_vnd, now_vn
                     sender_name = esc(data.get("senderName", "N/A"))
                     time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                     alert_msg = (
@@ -291,7 +288,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         user_row = await db.get_user_by_id(order["user_id"])
         telegram_id = user_row["telegram_id"] if user_row else None
         
-        from src.utils.formatters import format_vnd
+        
         
         # LATE PAYMENT, PARTIAL PAYMENT, or EXPIRED ORDER FALLBACK
         is_expired = order["status"] not in ("pending",)
@@ -310,7 +307,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     balance_after=new_balance, description=f"Hoàn tiền QR ({order_id})", reference_id=str(order_id)
                 )
                 if bot_app:
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                     if order["status"] != "pending":
                         reason_text = "đã hết hạn"
                         reason_emoji = "⏱"
@@ -342,8 +338,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         telegram_id = user_row["telegram_id"] if user_row else None
         
         try:
-            from src.i18n import t
-            from src.utils.formatters import format_vnd, format_account_list
             user = await db.get_user(telegram_id) if telegram_id else None
             lang = user.get("language", "vi") if user else "vi"
 
@@ -399,7 +393,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
                 )
                 # Check and pay referral bonus
-                from src.services.referral import process_referral_bonus
                 await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
                 if bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
@@ -412,7 +405,6 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 # === NOTIFY ADMIN: New order completed ===
                 if bot_app and config.admin_chat_id:
                     try:
-                        from src.utils.formatters import now_vn
                         cost = order["original_price"] * order["quantity"]
                         profit = order["total_amount"] - cost
                         time_str = now_vn().strftime("%H:%M %d/%m/%Y")
