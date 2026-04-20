@@ -167,15 +167,15 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_note = await db.get_custom_note(product_id)
 
     text = t("product_detail", lang,
-        name=shorten_product_name(product.get("product_name", "")),
-        description=product.get("description", ""),
+        name=esc(shorten_product_name(product.get("product_name", ""))),
+        description=esc(product.get("description", "")),
         price=format_vnd(sell_price),
         slot_info=slot_info,
         quantity=quantity,
     )
 
     if custom_note:
-        text += f"\n\n📌 <b>Ghi chú từ shop:</b>\n{custom_note}"
+        text += f"\n\n📌 <b>Ghi chú từ shop:</b>\n{esc(custom_note)}"
 
     keyboard = product_detail_keyboard(product_id, quantity, lang, max_qty=available)
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -228,7 +228,7 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = db_user["balance"]
 
     text = t("confirm_purchase", lang,
-        name=product.get("product_name", ""),
+        name=esc(product.get("product_name", "")),
         quantity=quantity,
         price=format_vnd(sell_price),
         total=format_vnd(total),
@@ -505,7 +505,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     accounts_text = format_account_list(delivered, lang)
 
     text = t("purchase_success", lang,
-        name=product.get("product_name", ""),
+        name=esc(product.get("product_name", "")),
         quantity=quantity,
         total=format_vnd(total),
         accounts=accounts_text,
@@ -549,7 +549,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
             admin_msg = (
                 f"🛒 <b>ĐƠN HÀNG MỚI</b>\n\n"
                 f"👤 Khách: {esc(user.get('full_name', 'N/A'))}\n"
-                f"📦 SP: {product.get('product_name', '')} x{quantity}\n"
+                f"📦 SP: {esc(product.get('product_name', ''))} x{quantity}\n"
                 f"💰 Bán: {format_vnd(total)}\n"
                 f"💵 Vốn: {format_vnd(cost)}\n"
                 f"📊 Lãi: +{format_vnd(profit)}\n"
