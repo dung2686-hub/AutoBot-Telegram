@@ -54,22 +54,22 @@ def error_handler(func):
         try:
             return await func(update, context, *args, **kwargs)
         except Exception as e:
-            logger.exception("Handler error in %s: %s", func.__name__, e)
+            logger.exception("!!! Handler error in %s: %s", func.__name__, e)
             lang = context.user_data.get("lang", "vi")
             msg = t("error_generic", lang)
             try:
                 if update.callback_query:
-                    await update.callback_query.answer(msg, show_alert=True)
+                    try:
+                        await update.callback_query.answer(msg, show_alert=True)
+                    except Exception:
+                        # answer() already called — send a new message instead
+                        chat_id = update.effective_chat.id if update.effective_chat else None
+                        if chat_id:
+                            await context.bot.send_message(chat_id=chat_id, text=msg)
                 elif update.effective_message:
                     await update.effective_message.reply_text(msg)
-            except Exception:
-                # answer() already called — fallback to send_message
-                try:
-                    chat_id = update.effective_chat.id if update.effective_chat else None
-                    if chat_id:
-                        await context.bot.send_message(chat_id=chat_id, text=msg)
-                except Exception:
-                    pass
+            except Exception as notify_err:
+                logger.error("!!! Failed to notify user about error: %s", notify_err)
 
             # If inside a ConversationHandler, end the conversation to prevent stuck state
             from telegram.ext import ConversationHandler

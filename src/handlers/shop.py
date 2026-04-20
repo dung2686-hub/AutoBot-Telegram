@@ -58,6 +58,7 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show product listing."""
     query = update.callback_query
     await query.answer()
+    logger.info("[SHOP-MENU] entered by user %s", update.effective_user.id)
 
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
@@ -118,6 +119,7 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show product detail with quantity selector."""
     query = update.callback_query
+    logger.info("[PRODUCT-DETAIL] >>> ENTERED by user %s, data=%s", update.effective_user.id, query.data)
     await query.answer()
 
     lang = context.user_data.get("lang", "vi")
@@ -129,8 +131,10 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     quantity = int(parts[3]) if len(parts) > 3 else 1
 
     # Always refresh to get latest stock
+    logger.info("[PRODUCT-DETAIL] refreshing cache for product %s", product_id)
     await canboso.refresh_cache()
     product = canboso.find_product(product_id)
+    logger.info("[PRODUCT-DETAIL] product found: %s", product is not None)
 
     if not product:
         await query.edit_message_text(
