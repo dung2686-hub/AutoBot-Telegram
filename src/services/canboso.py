@@ -51,11 +51,11 @@ class CanbosoClient:
                     new_stock = {}
                     for p in products:
                         pid = p.get("_id")
-                        avail = p.get("stats", {}).get("available", 0)
+                        avail = p.get("stats", {}).get("available") or 0
                         if pid:
                             new_stock[pid] = avail
                             if pid in self._last_stock:
-                                old_avail = self._last_stock[pid]
+                                old_avail = self._last_stock[pid] or 0
                                 if avail > old_avail:
                                     self.pending_restocks.append({
                                         "product_id": pid,
