@@ -5,6 +5,21 @@
 
 ---
 
+## 🚨 PROJECT-SPECIFIC CONTEXT (AutoBot-Telegram)
+
+> [!IMPORTANT]
+> **MANDATORY at session start:** Before any implementation work on this project, READ the following docs to understand current plans and progress:
+
+| File | Content |
+|------|---------|
+| `docs/IMPLEMENTATION_PLAN.md` | Chi tiết plan 3 tính năng: Smart Notifications, Coupon System, Dashboard Nâng Cao |
+| `docs/FEATURE_UPGRADE_SUGGESTIONS.md` | 12 gợi ý nâng cấp chia 4 tier + roadmap đề xuất |
+| `docs/PLAN-restock-broadcast.md` | Plan hệ thống thông báo hàng về (Restock Broadcast) |
+
+**Project type:** Python Telegram Bot (python-telegram-bot + SQLite + Canboso API + SePay webhook)
+
+---
+
 ## 📋 Overview
 
 Antigravity Kit is a modular, portable system consisting of:

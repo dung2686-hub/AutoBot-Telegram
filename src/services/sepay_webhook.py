@@ -381,8 +381,11 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
 
                 # === PATCH C: ALERT ADMIN ===
                 if bot_app and config.admin_chat_id:
+                    user_name = esc(user.get("full_name", "N/A")) if user else "N/A"
+                    user_tid = telegram_id or "?"
                     admin_msg = (
                         f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
+                        f"👤 Khách: <b>{user_name}</b> (<code>{user_tid}</code>)\n"
                         f"Đơn: MUA{order_id}\n"
                         f"Sản phẩm: {esc(order['product_name'])}\n"
                         f"SL: {order['quantity']}\n"
