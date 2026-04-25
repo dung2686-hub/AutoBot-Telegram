@@ -66,10 +66,20 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = main_menu_keyboard(lang=lang)
 
     try:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
-    except Exception:
+        # If the message is a media message (like QR code), we can't edit its text
+        if query.message.photo or query.message.document:
+            await query.message.delete()
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
         # If text is exactly the same, Telegram raises BadRequest
-        pass
+        logger.debug(f"Could not edit message to main menu: {e}")
 
 @error_handler
 @ensure_user
