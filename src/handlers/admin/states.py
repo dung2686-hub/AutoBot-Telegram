@@ -13,6 +13,10 @@ CUSTOM_EDIT_MENU = 18
 CUSTOM_EDIT_NAME = 19
 CHECKUSER_INPUT = 20
 QUICKCREDIT_INPUT = 21
+CUSTOM_EDIT_STOCK = 22
+CUSTOM_EDIT_NOTE = 23
+CUSTOM_ADD_STOCK = 24
+CUSTOM_ADD_NOTE = 25
 
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:

@@ -98,7 +98,9 @@ async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     custom_products = await db.get_custom_products()
     for p in custom_products:
-        btn_text = f"📦 {p['name']} — {format_vnd(p['price'])}"
+        stock = p.get("stock", 0)
+        stock_text = f" 📦 {stock}" if stock > 0 else " ❌ Hết"
+        btn_text = f"🔑 {p['name']} — {format_vnd(p['price'])}{stock_text}"
         keyboard.append([
             InlineKeyboardButton(btn_text, callback_data=f"custom:detail:{p['id']}")
         ])
@@ -571,7 +573,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
 @error_handler
 @ensure_user
 async def custom_product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show custom product detail with contact admin buttons."""
+    """Show custom product detail with quantity selector (like Canboso flow)."""
     query = update.callback_query
     await query.answer()
 
@@ -580,30 +582,344 @@ async def custom_product_detail(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     product_id = int(parts[2])
+    quantity = int(parts[3]) if len(parts) > 3 else None  # None = first visit
+
     db = context.bot_data["db"]
+    lang = context.user_data.get("lang", "vi")
     product = await db.get_custom_product(product_id)
 
-    if not product:
-        await query.edit_message_text("❌ Sản phẩm không tồn tại.")
+    if not product or not product.get("is_active"):
+        await query.edit_message_text(
+            "❌ Sản phẩm không tồn tại hoặc đã ngưng bán.",
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
         return
 
+    stock = product.get("stock", 0)
+    if stock <= 0:
+        await query.edit_message_text(
+            f"❌ <b>{esc(product['name'])}</b> đã hết hàng.",
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
+    # First visit → show quantity picker
+    if quantity is None:
+        text = (
+            f"✅ Bạn đã chọn sản phẩm:\n"
+            f"📦 <b>{esc(product['name'])}</b>\n"
+            f"💰 Giá: <b>{format_vnd(product['price'])}</b> / tài khoản.\n"
+            f"📦 Tồn kho: <b>{stock}</b> tài khoản.\n\n"
+            f"👉 Nhập số lượng bạn muốn mua (từ 1 đến {stock}).\n"
+            f"Hoặc bấm ❌ <b>Hủy chọn</b> để chọn sản phẩm khác."
+        )
+        keyboard = _custom_quantity_keyboard(product_id, stock, lang)
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
+    # Quantity selected → go to buy confirm
+    quantity = min(quantity, stock)
+    quantity = max(1, quantity)
+    context.user_data["custom_buy"] = {"product_id": product_id, "quantity": quantity}
+    await _show_custom_buy_confirm(query, context, product, quantity, lang)
+
+
+def _custom_quantity_keyboard(product_id: int, max_qty: int, lang: str = "vi") -> InlineKeyboardMarkup:
+    """Build quantity picker: 1/2/3, 5/10, custom input, back/close."""
+    row1 = []
+    for q in [1, 2, 3]:
+        if q <= max_qty:
+            row1.append(InlineKeyboardButton(str(q), callback_data=f"custom:detail:{product_id}:{q}"))
+    row2 = []
+    for q in [5, 10]:
+        if q <= max_qty:
+            row2.append(InlineKeyboardButton(str(q), callback_data=f"custom:detail:{product_id}:{q}"))
+
+    rows = [row1]
+    if row2:
+        rows.append(row2)
+    rows.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:shop"),
+                 InlineKeyboardButton("❌ Đóng", callback_data="menu:main")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _show_custom_buy_confirm(query, context, product, quantity, lang):
+    """Show payment summary for custom product."""
+    db = context.bot_data["db"]
+    db_user = context.user_data["db_user"]
+
+    price = product["price"]
+    total = price * quantity
+    balance = db_user["balance"]
+    shortfall = max(0, total - balance)
+
     text = (
-        f"📦 <b>{esc(product['name'])}</b>\n"
-        f"💰 Giá: <b>{format_vnd(product['price'])}</b>\n\n"
-        f"📌 Liên hệ Admin để mua sản phẩm này:"
+        f"🔖 Thanh toán đơn hàng\n\n"
+        f"📦 Sản phẩm: <b>{esc(product['name'])}</b>\n"
+        f"📦 Số lượng: <b>{quantity}</b>\n"
+        f"💰 Tạm tính: <b>{format_vnd(total)}</b>\n"
+        f"🎁 Giảm giá: 0đ\n"
+        f"💳 Cần thanh toán: <b>{format_vnd(total)}</b>\n"
+        f"👛 Số dư ví: <b>{format_vnd(balance)}</b>\n"
+        f"{'⚠️' if shortfall > 0 else '✅'} Còn thiếu: <b>{format_vnd(shortfall)}</b>"
     )
 
-    buttons = []
+    product_id = product["id"]
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 Thanh toán bằng ví", callback_data=f"custom:execute:{product_id}:{quantity}")],
+        [InlineKeyboardButton("🏦 Chuyển khoản QR", callback_data=f"custom:qr_pay:{product_id}:{quantity}")],
+        [InlineKeyboardButton("❌ Hủy đơn", callback_data="menu:shop")],
+    ])
+
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@error_handler
+@ensure_user
+async def custom_execute_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Execute custom product purchase via wallet."""
+    query = update.callback_query
+    await query.answer()
+
+    telegram_id = update.effective_user.id
+
+    # Double-click protection
+    processing = context.bot_data.setdefault("_processing_purchases", set())
+    if telegram_id in processing:
+        await query.answer("⏳ Đang xử lý đơn hàng, vui lòng chờ...", show_alert=True)
+        return
+    processing.add(telegram_id)
+
+    try:
+        await _do_custom_execute(update, context, query, telegram_id)
+    finally:
+        processing.discard(telegram_id)
+
+
+async def _do_custom_execute(update, context, query, telegram_id):
+    """Internal custom purchase logic via wallet."""
+    lang = context.user_data.get("lang", "vi")
+    db = context.bot_data["db"]
+    db_user = context.user_data["db_user"]
+
+    parts = query.data.split(":")
+    product_id = int(parts[2])
+    quantity = int(parts[3]) if len(parts) > 3 else 1
+
+    product = await db.get_custom_product(product_id)
+    if not product or not product.get("is_active"):
+        await query.edit_message_text(
+            "❌ Sản phẩm không tồn tại.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    stock = product.get("stock", 0)
+    if quantity > stock:
+        await query.edit_message_text(
+            f"⚠️ Số lượng yêu cầu vượt quá tồn kho ({stock}). Vui lòng chọn lại.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    price = product["price"]
+    total = price * quantity
+
+    # Check balance
+    current_balance = await db.get_balance(telegram_id)
+    if current_balance < total:
+        await query.edit_message_text(
+            f"❌ Số dư không đủ.\n\n"
+            f"💳 Số dư: <b>{format_vnd(current_balance)}</b>\n"
+            f"💰 Cần: <b>{format_vnd(total)}</b>\n\n"
+            f"Vui lòng nạp thêm hoặc chọn <b>Chuyển khoản QR</b>.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    # Deduct balance (atomic)
+    new_balance = await db.update_balance(telegram_id, -total)
+    if new_balance == -1:
+        await query.edit_message_text(
+            "❌ Số dư không đủ.", reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    # Decrement stock
+    stock_ok = await db.decrement_custom_stock(product_id, quantity)
+    if not stock_ok:
+        # Refund
+        await db.update_balance(telegram_id, total)
+        await query.edit_message_text(
+            "❌ Sản phẩm đã hết hàng. Số tiền đã được hoàn lại.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    user = await db.get_user(telegram_id)
+    # Create completed order
+    order = await db.create_order(
+        user_id=user["id"],
+        product_id=f"custom_{product_id}",
+        product_name=product["name"],
+        quantity=quantity,
+        original_price=price,
+        sell_price=price,
+        order_code="",
+        delivered_data=[],
+        status="completed",
+    )
+
+    await db.add_transaction(
+        user_id=user["id"], tx_type="purchase", amount=-total,
+        balance_after=new_balance,
+        description=f"Mua {product['name']} x{quantity}",
+        reference_id=str(order["id"]),
+    )
+
+    # Send success message
+    delivery_note = product.get("delivery_note", "") or ""
+    if not delivery_note:
+        delivery_note = _default_delivery_note()
+
+    order_date = now_vn().strftime("%d/%m/%Y")
+    text = (
+        f"🎉 <b>Thanh toán thành công!</b>\n\n"
+        f"📋 Mã đơn: <b>ORD{order['id']}</b>\n"
+        f"📦 Sản phẩm: <b>{esc(product['name'])}</b>\n"
+        f"📦 Số lượng: <b>{quantity}</b>\n"
+        f"📅 Ngày tạo: <b>{order_date}</b>\n\n"
+        f"🔑 <b>Danh sách tài khoản:</b>\n"
+        f"{esc(delivery_note)}\n\n"
+        f"💳 Số dư còn: <b>{format_vnd(new_balance)}</b>"
+    )
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
+    await context.bot.send_message(
+        chat_id=telegram_id, text=text,
+        reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+    )
+
+    # Notify admin
+    await _notify_admin_custom_order(context, user, product, quantity, total, order["id"], "Ví")
+
+
+@error_handler
+@ensure_user
+async def custom_qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate QR and pending order for custom product direct pay."""
+    query = update.callback_query
+    await query.answer()
+
+    lang = context.user_data.get("lang", "vi")
+    db = context.bot_data["db"]
+    telegram_id = update.effective_user.id
+    db_user = context.user_data["db_user"]
+
+    parts = query.data.split(":")
+    product_id = int(parts[2])
+    quantity = int(parts[3]) if len(parts) > 3 else 1
+
+    product = await db.get_custom_product(product_id)
+    if not product or not product.get("is_active"):
+        await query.edit_message_text(
+            "❌ Sản phẩm không tồn tại.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    stock = product.get("stock", 0)
+    if quantity > stock:
+        await query.edit_message_text(
+            f"⚠️ Tồn kho không đủ ({stock}). Vui lòng chọn lại.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    price = product["price"]
+    total = price * quantity
+
+    # Create pending order
+    order = await db.create_order(
+        user_id=db_user["id"],
+        product_id=f"custom_{product_id}",
+        product_name=product["name"],
+        quantity=quantity,
+        original_price=price,
+        sell_price=price,
+        order_code="",
+        delivered_data=[],
+        status="pending",
+    )
+
+    order_id = order["id"]
+    order_code_mem = f"MUA{order_id}"
+
+    # Validate bank config
+    if not config.bank_bin or not config.bank_account:
+        await query.edit_message_text(
+            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
+    # Generate QR
+    qr_bytes = await generate_qr_image(total, order_code_mem)
+    bank_display = get_bank_display_name(config.bank_bin)
+
+    msg_text = (
+        f"🏦 <b>Chuyển khoản tới {bank_display} - {config.bank_account}</b>\n"
+        f"👤 Chủ TK: <b>{esc(config.bank_account_name)}</b>\n\n"
+        f"💰 Số tiền: <b>{format_vnd(total)}</b>\n"
+        f"📝 Nội dung CK: <code>{esc(order_code_mem)}</code>\n"
+        f"⏰ Thời gian còn lại: <b>5 phút</b>\n\n"
+        f"📱 Quét mã QR bên dưới để chuyển khoản.\n"
+        f"⚠️ <b>Lưu ý:</b> Nhập đúng nội dung chuyển khoản!"
+    )
+
+    await query.message.delete()
+    await context.bot.send_photo(
+        chat_id=telegram_id,
+        photo=qr_bytes,
+        caption=msg_text,
+        parse_mode="HTML",
+        reply_markup=back_to_menu_keyboard(lang),
+    )
+
+
+def _default_delivery_note() -> str:
+    """Fallback delivery note when product has none configured."""
+    parts = []
     if config.support_zalo:
-        buttons.append([InlineKeyboardButton(
-            "📞 Zalo Admin", url=f"https://zalo.me/{config.support_zalo}"
-        )])
+        parts.append(f"Zalo {config.support_zalo}")
     if config.support_telegram:
-        buttons.append([InlineKeyboardButton(
-            "✈️ Telegram Admin", url=f"https://t.me/{config.support_telegram}"
-        )])
-    buttons.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="menu:shop")])
+        parts.append(f"Telegram @{config.support_telegram}")
+    contact = " hoặc ".join(parts) if parts else "admin"
+    return f"Cung cấp mã đơn hàng và tài khoản Telegram cho admin để nhận hàng. Liên hệ qua {contact}"
 
-    await query.edit_message_text(
-        text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML"
-    )
+
+async def _notify_admin_custom_order(context, user, product, quantity, total, order_id, payment_method):
+    """Notify admin about new custom product order."""
+    if not config.admin_chat_id:
+        return
+    try:
+        time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+        admin_msg = (
+            f"🛒 <b>ĐƠN HÀNG CUSTOM MỚI #{order_id}</b>\n\n"
+            f"👤 Khách: <b>{esc(user.get('full_name', 'N/A'))}</b> (<code>{user.get('telegram_id', '?')}</code>)\n"
+            f"📦 SP: <b>{esc(product['name'])}</b> x{quantity}\n"
+            f"💰 Tổng: <b>{format_vnd(total)}</b>\n"
+            f"💳 TT: {payment_method}\n\n"
+            f"⚠️ <b>Hãy giao hàng cho khách!</b>\n"
+            f"⏰ {time_str}"
+        )
+        await context.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+    except Exception:
+        pass
+

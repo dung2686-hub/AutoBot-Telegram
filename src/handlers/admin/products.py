@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from src.utils.decorators import ensure_user, admin_only, error_handler
 from src.utils.formatters import format_vnd, esc
 from src.utils.keyboards import admin_keyboard
-from .states import CUSTOM_NAME, CUSTOM_PRICE, CUSTOM_EDIT_PRICE, CUSTOM_EDIT_MENU, CUSTOM_EDIT_NAME
+from .states import CUSTOM_NAME, CUSTOM_PRICE, CUSTOM_EDIT_PRICE, CUSTOM_EDIT_MENU, CUSTOM_EDIT_NAME, CUSTOM_EDIT_STOCK, CUSTOM_EDIT_NOTE, CUSTOM_ADD_STOCK, CUSTOM_ADD_NOTE
 
 @error_handler
 @ensure_user
@@ -21,7 +21,9 @@ async def custom_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if products:
         for p in products:
-            text += f"• <b>{esc(p['name'])}</b> — {format_vnd(p['price'])}\n"
+            stock = p.get("stock", 0)
+            note_status = "✅" if p.get("delivery_note") else "❌"
+            text += f"• <b>{esc(p['name'])}</b> — {format_vnd(p['price'])} | 📦 {stock} | Note: {note_status}\n"
             keyboard.append([
                 InlineKeyboardButton(f"✏️ {p['name']}", callback_data=f"admin:custom_edit:{p['id']}"),
                 InlineKeyboardButton("❌", callback_data=f"admin:custom_del:{p['id']}"),
@@ -72,7 +74,7 @@ async def custom_add_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @ensure_user
 @admin_only
 async def custom_add_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive price and save product."""
+    """Receive price, ask for stock."""
     if context.user_data.get("active_conv") != "admin_custom_add":
         return ConversationHandler.END
 
@@ -84,23 +86,103 @@ async def custom_add_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Giá không hợp lệ. Nhập số dương, ví dụ: <code>300000</code>", parse_mode="HTML")
         return CUSTOM_PRICE
 
-    db = context.bot_data["db"]
-    name = context.user_data.pop("custom_product_name", "")
-    product = await db.add_custom_product(name, price)
+    context.user_data["custom_product_price"] = price
+    name = context.user_data.get("custom_product_name", "")
 
     await update.message.reply_text(
-        f"✅ Đã thêm: <b>{esc(product['name'])}</b>\n💰 Giá: <b>{format_vnd(product['price'])}</b>",
-        reply_markup=admin_keyboard(),
+        f"Tên: <b>{esc(name)}</b>\n"
+        f"Giá: <b>{format_vnd(price)}</b>\n\n"
+        f"Nhập <b>số lượng tồn kho</b> (VD: <code>10</code>):",
         parse_mode="HTML",
     )
-    context.user_data.pop("active_conv", None)
+    return CUSTOM_ADD_STOCK
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive stock, ask for delivery note."""
+    if context.user_data.get("active_conv") != "admin_custom_add":
+        return ConversationHandler.END
+
+    try:
+        stock = int(update.message.text.strip().replace(",", "").replace(".", ""))
+        if stock < 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ Số không hợp lệ. Nhập số >= 0.", parse_mode="HTML")
+        return CUSTOM_ADD_STOCK
+
+    context.user_data["custom_product_stock"] = stock
+
+    keyboard = [[InlineKeyboardButton("⏭ Bỏ qua", callback_data="admin:custom_skip_note")]]
+    await update.message.reply_text(
+        f"📦 Stock: <b>{stock}</b>\n\n"
+        f"Nhập <b>ghi chú giao hàng</b> (hiển thị cho khách sau thanh toán).\n"
+        f"VD: <i>Liên hệ Zalo 0988660809 để nhận tài khoản</i>\n\n"
+        f"Hoặc bấm <b>Bỏ qua</b> nếu chưa cần.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    return CUSTOM_ADD_NOTE
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive delivery note, save product with all fields."""
+    if context.user_data.get("active_conv") != "admin_custom_add":
+        return ConversationHandler.END
+
+    note = update.message.text.strip()
+    await _save_new_custom_product(context, update, note=note)
     return ConversationHandler.END
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_add_note_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Skip delivery note, save product without it."""
+    query = update.callback_query
+    await query.answer()
+
+    await _save_new_custom_product(context, update, note="")
+    return ConversationHandler.END
+
+
+async def _save_new_custom_product(context, update, note: str):
+    """Save custom product with all collected fields."""
+    db = context.bot_data["db"]
+    name = context.user_data.pop("custom_product_name", "")
+    price = context.user_data.pop("custom_product_price", 0)
+    stock = context.user_data.pop("custom_product_stock", 0)
+    context.user_data.pop("active_conv", None)
+
+    product = await db.add_custom_product(name, price, stock)
+    if note:
+        await db.update_custom_product(product["id"], delivery_note=note)
+
+    text = (
+        f"✅ <b>Đã thêm sản phẩm:</b>\n\n"
+        f"📦 Tên: <b>{esc(product['name'])}</b>\n"
+        f"💰 Giá: <b>{format_vnd(product['price'])}</b>\n"
+        f"📦 Stock: <b>{stock}</b>\n"
+        f"📝 Ghi chú: <i>{esc(note[:80]) if note else 'Chưa có'}</i>"
+    )
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=admin_keyboard(), parse_mode="HTML")
+    else:
+        await update.message.reply_text(text, reply_markup=admin_keyboard(), parse_mode="HTML")
 
 @error_handler
 @ensure_user
 @admin_only
 async def custom_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show edit menu with options to edit name or price."""
+    """Show edit menu with options to edit name, price, stock, or delivery note."""
     query = update.callback_query
     await query.answer()
 
@@ -117,14 +199,20 @@ async def custom_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ SP không tồn tại.")
         return ConversationHandler.END
 
+    note_preview = (product.get("delivery_note") or "Chưa có")[:50]
+
     keyboard = [
         [InlineKeyboardButton("✏️ Sửa tên", callback_data="admin:custom_edit_name"),
          InlineKeyboardButton("💰 Sửa giá", callback_data="admin:custom_edit_price")],
+        [InlineKeyboardButton("📦 Sửa stock", callback_data="admin:custom_edit_stock"),
+         InlineKeyboardButton("📝 Sửa ghi chú", callback_data="admin:custom_edit_note")],
         [InlineKeyboardButton("⬅️ Quay lại", callback_data="admin:custom")]
     ]
     await query.edit_message_text(
         f"✏️ <b>Sửa sản phẩm: {esc(product['name'])}</b>\n"
-        f"💰 Giá hiện tại: <b>{format_vnd(product['price'])}</b>\n\n"
+        f"💰 Giá: <b>{format_vnd(product['price'])}</b>\n"
+        f"📦 Stock: <b>{product.get('stock', 0)}</b>\n"
+        f"📝 Ghi chú giao hàng: <i>{esc(note_preview)}</i>\n\n"
         f"Bạn muốn thay đổi thông tin nào?",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
@@ -257,3 +345,108 @@ async def custom_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await query.edit_message_text("❌ SP không tồn tại.")
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_stock_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for new stock count."""
+    query = update.callback_query
+    await query.answer()
+
+    product_id = context.user_data.get("custom_edit_id")
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
+    await query.edit_message_text(
+        f"📦 <b>Sửa stock: {esc(product['name'])}</b>\n"
+        f"Stock hiện tại: <b>{product.get('stock', 0)}</b>\n\n"
+        f"Nhập số lượng stock mới:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_edit_stock"
+    return CUSTOM_EDIT_STOCK
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save new stock count."""
+    if context.user_data.get("active_conv") != "admin_custom_edit_stock":
+        return ConversationHandler.END
+
+    try:
+        stock = int(update.message.text.strip().replace(",", "").replace(".", ""))
+        if stock < 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ Số không hợp lệ. Nhập số >= 0.", parse_mode="HTML")
+        return CUSTOM_EDIT_STOCK
+
+    db = context.bot_data["db"]
+    product_id = context.user_data.pop("custom_edit_id", None)
+    if not product_id:
+        return ConversationHandler.END
+
+    product = await db.get_custom_product(product_id)
+    await db.update_custom_product(product_id, stock=stock)
+
+    await update.message.reply_text(
+        f"✅ <b>{esc(product['name'])}</b>\nStock mới: <b>{stock}</b>",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_note_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for new delivery note."""
+    query = update.callback_query
+    await query.answer()
+
+    product_id = context.user_data.get("custom_edit_id")
+    db = context.bot_data["db"]
+    product = await db.get_custom_product(product_id)
+
+    current_note = product.get("delivery_note", "") or "Chưa có"
+
+    keyboard = [[InlineKeyboardButton("⬅️ Hủy", callback_data="admin:custom_edit_menu")]]
+    await query.edit_message_text(
+        f"📝 <b>Sửa ghi chú giao hàng: {esc(product['name'])}</b>\n\n"
+        f"Ghi chú hiện tại:\n<i>{esc(current_note)}</i>\n\n"
+        f"Nhập ghi chú mới (hiển thị cho khách sau khi thanh toán):",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+    context.user_data["active_conv"] = "admin_custom_edit_note"
+    return CUSTOM_EDIT_NOTE
+
+@error_handler
+@ensure_user
+@admin_only
+async def custom_edit_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save new delivery note."""
+    if context.user_data.get("active_conv") != "admin_custom_edit_note":
+        return ConversationHandler.END
+
+    note = update.message.text.strip()
+    db = context.bot_data["db"]
+    product_id = context.user_data.pop("custom_edit_id", None)
+    if not product_id:
+        return ConversationHandler.END
+
+    product = await db.get_custom_product(product_id)
+    await db.update_custom_product(product_id, delivery_note=note)
+
+    await update.message.reply_text(
+        f"✅ <b>{esc(product['name'])}</b>\n📝 Ghi chú mới:\n<i>{esc(note[:100])}</i>",
+        reply_markup=admin_keyboard(),
+        parse_mode="HTML",
+    )
+    context.user_data.pop("active_conv", None)
+    return ConversationHandler.END

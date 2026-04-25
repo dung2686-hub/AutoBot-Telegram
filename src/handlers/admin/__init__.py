@@ -8,8 +8,11 @@ from .broadcast import broadcast_start, broadcast_send
 from .markup import markup_menu, markup_prompt, markup_set, markup_toggle, note_edit_prompt, note_save
 from .products import (
     custom_list, custom_add_start, custom_add_name, custom_add_price,
+    custom_add_stock, custom_add_note, custom_add_note_skip,
     custom_edit_menu, custom_edit_name_prompt, custom_edit_price_prompt,
-    custom_edit_name, custom_edit_price, custom_delete
+    custom_edit_name, custom_edit_price, custom_delete,
+    custom_edit_stock_prompt, custom_edit_stock,
+    custom_edit_note_prompt, custom_edit_note,
 )
 
 def get_admin_conversation() -> ConversationHandler:
@@ -57,9 +60,20 @@ def get_admin_conversation() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_price),
                 CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
             ],
+            CUSTOM_ADD_STOCK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_stock),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            ],
+            CUSTOM_ADD_NOTE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_add_note),
+                CallbackQueryHandler(custom_add_note_skip, pattern=r"^admin:custom_skip_note$"),
+                CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
+            ],
             CUSTOM_EDIT_MENU: [
                 CallbackQueryHandler(custom_edit_name_prompt, pattern=r"^admin:custom_edit_name$"),
                 CallbackQueryHandler(custom_edit_price_prompt, pattern=r"^admin:custom_edit_price$"),
+                CallbackQueryHandler(custom_edit_stock_prompt, pattern=r"^admin:custom_edit_stock$"),
+                CallbackQueryHandler(custom_edit_note_prompt, pattern=r"^admin:custom_edit_note$"),
                 CallbackQueryHandler(custom_list, pattern=r"^admin:custom$"),
             ],
             CUSTOM_EDIT_NAME: [
@@ -68,6 +82,14 @@ def get_admin_conversation() -> ConversationHandler:
             ],
             CUSTOM_EDIT_PRICE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_price),
+                CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
+            ],
+            CUSTOM_EDIT_STOCK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_stock),
+                CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
+            ],
+            CUSTOM_EDIT_NOTE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_edit_note),
                 CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit_menu$"),
             ],
             CHECKUSER_INPUT: [
