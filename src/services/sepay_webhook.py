@@ -348,89 +348,155 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
             user = await db.get_user(telegram_id) if telegram_id else None
             lang = user.get("language", "vi") if user else "vi"
 
-            # Reuse shared CanbosoClient from bot_data
-            canboso = bot_app.bot_data["canboso"]
-            
-            # --- PROTECT AGAINST PRICE SLIPPAGE ---
-            await canboso.refresh_cache()
-            product = canboso.find_product(order["product_id"])
-            current_cost = product.get("walletPricing", 0) if product else float('inf')
-            
-            # If the product cost is now higher than what we sold it for, abort!
-            if not product or current_cost > order["sell_price"]:
-                logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
-                result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}
-            else:
-                result = await canboso.purchase(product_id=order["product_id"], quantity=order["quantity"])
+            # ── CUSTOM PRODUCT: skip Canboso, just complete the order ──
+            if order["product_id"].startswith("custom_"):
+                custom_pid = int(order["product_id"].replace("custom_", ""))
+                stock_ok = await db.decrement_custom_stock(custom_pid, order["quantity"])
 
-            if not result.get("success"):
-                # Refund to wallet
-                error_msg = result.get("message", "Unknown error")
-                logger.warning("Canboso purchase failed for MUA %d. Refunding %d. Reason: %s", order_id, order["total_amount"], error_msg)
-                new_balance = await db.update_balance(telegram_id, order["total_amount"])
-                await db.update_order(order_id, status="failed")
-                await db.add_transaction(
-                    user_id=order["user_id"], tx_type="refund", amount=order["total_amount"],
-                    balance_after=new_balance, description=f"Hoàn tiền (Lỗi mua {order_id})", reference_id=str(order_id)
-                )
-                if bot_app and telegram_id:
-                    msg = (f"❌ <b>Giao dịch thành công nhưng kho hết hạn!</b>\n\n"
-                           f"Bot không thể mua tự động từ nguồn với lỗi: {error_msg}.\n"
-                           f"Số tiền <b>{format_vnd(order['total_amount'])}</b> đã được hoàn trả vào số dư ví của Quý khách.")
-                    await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
-
-                # === PATCH C: ALERT ADMIN ===
-                if bot_app and config.admin_chat_id:
-                    user_name = esc(user.get("full_name", "N/A")) if user else "N/A"
-                    user_tid = telegram_id or "?"
-                    admin_msg = (
-                        f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
-                        f"👤 Khách: <b>{user_name}</b> (<code>{user_tid}</code>)\n"
-                        f"Đơn: MUA{order_id}\n"
-                        f"Sản phẩm: {esc(order['product_name'])}\n"
-                        f"SL: {order['quantity']}\n"
-                        f"Lỗi: <code>{esc(error_msg)}</code>\n\n"
-                        f"Đã hoàn {format_vnd(order['total_amount'])} vào ví khách.\n"
-                        f"⚠️ Kiểm tra số dư Canboso ngay!"
+                if not stock_ok:
+                    # Out of stock → refund to wallet
+                    new_balance = await db.update_balance(telegram_id, order["total_amount"])
+                    await db.update_order(order_id, status="failed")
+                    await db.add_transaction(
+                        user_id=order["user_id"], tx_type="refund", amount=order["total_amount"],
+                        balance_after=new_balance, description=f"Hoàn tiền (Hết hàng custom {order_id})", reference_id=str(order_id)
                     )
-                    try:
-                        await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
-                    except Exception as admin_err:
-                        logger.error("Failed to alert admin: %s", admin_err)
-            else:
-                delivered = result.get("deliveredAccounts", [])
-                await db.update_order(
-                    order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
-                )
-                # Referral bonus disabled — uncomment to re-enable
-                # await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
-                if bot_app and telegram_id:
-                    accounts_text = format_account_list(delivered, lang)
-                    msg = t("purchase_success", lang,
-                        name=esc(order["product_name"]), quantity=order["quantity"],
-                        total=format_vnd(order["total_amount"]), accounts=accounts_text
-                    )
-                    await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+                    if bot_app and telegram_id:
+                        msg = (f"❌ <b>Sản phẩm {esc(order['product_name'])} đã hết hàng!</b>\n\n"
+                               f"Số tiền <b>{format_vnd(order['total_amount'])}</b> đã được hoàn trả vào ví.")
+                        await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+                else:
+                    await db.update_order(order_id, status="completed", order_code="", delivered_data=[])
 
-                # === NOTIFY ADMIN: New order completed ===
-                if bot_app and config.admin_chat_id:
-                    try:
-                        cost = order["original_price"] * order["quantity"]
-                        profit = order["total_amount"] - cost
-                        time_str = now_vn().strftime("%H:%M %d/%m/%Y")
-                        admin_msg = (
-                            f"🛒 <b>ĐƠN HÀNG MỚI #{order_id}</b>\n\n"
-                            f"👤 Khách: {esc(user.get('full_name', 'N/A') if user else 'N/A')}\n"
-                            f"📦 SP: {esc(order['product_name'])} x{order['quantity']}\n"
-                            f"💰 Bán: {format_vnd(order['total_amount'])}\n"
-                            f"💵 Vốn: {format_vnd(cost)}\n"
-                            f"📊 Lãi: +{format_vnd(profit)}\n"
-                            f"💳 TT: QR chuyển khoản\n\n"
-                            f"⏰ {time_str}"
+                    if bot_app and telegram_id:
+                        # Get delivery note
+                        custom_product = await db.get_custom_product(custom_pid)
+                        delivery_note = (custom_product.get("delivery_note", "") if custom_product else "") or ""
+                        if not delivery_note:
+                            contact_parts = []
+                            if config.support_zalo:
+                                contact_parts.append(f"Zalo {config.support_zalo}")
+                            if config.support_telegram:
+                                contact_parts.append(f"Telegram @{config.support_telegram}")
+                            contact = " hoặc ".join(contact_parts) if contact_parts else "admin"
+                            delivery_note = f"Cung cấp mã đơn hàng và tài khoản Telegram cho admin để nhận hàng. Liên hệ qua {contact}"
+
+                        from src.utils.formatters import now_vn as _now_vn
+                        order_date = _now_vn().strftime("%d/%m/%Y")
+                        msg = (
+                            f"🎉 <b>Thanh toán thành công!</b>\n\n"
+                            f"📋 Mã đơn: <b>ORD{order_id}</b>\n"
+                            f"📦 Sản phẩm: <b>{esc(order['product_name'])}</b>\n"
+                            f"📦 Số lượng: <b>{order['quantity']}</b>\n"
+                            f"📅 Ngày tạo: <b>{order_date}</b>\n\n"
+                            f"🔑 <b>Danh sách tài khoản:</b>\n"
+                            f"{esc(delivery_note)}"
                         )
-                        await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
-                    except Exception:
-                        pass
+                        await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+
+                    # Notify admin
+                    if bot_app and config.admin_chat_id:
+                        try:
+                            time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                            user_name = esc(user.get("full_name", "N/A")) if user else "N/A"
+                            admin_msg = (
+                                f"🛒 <b>ĐƠN HÀNG CUSTOM MỚI #{order_id}</b>\n\n"
+                                f"👤 Khách: <b>{user_name}</b> (<code>{telegram_id}</code>)\n"
+                                f"📦 SP: <b>{esc(order['product_name'])}</b> x{order['quantity']}\n"
+                                f"💰 Tổng: <b>{format_vnd(order['total_amount'])}</b>\n"
+                                f"💳 TT: QR chuyển khoản\n\n"
+                                f"⚠️ <b>Hãy giao hàng cho khách!</b>\n"
+                                f"⏰ {time_str}"
+                            )
+                            await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                        except Exception:
+                            pass
+
+            # ── CANBOSO PRODUCT: existing flow ──
+            else:
+                # Reuse shared CanbosoClient from bot_data
+                canboso = bot_app.bot_data["canboso"]
+                
+                # --- PROTECT AGAINST PRICE SLIPPAGE ---
+                await canboso.refresh_cache()
+                product = canboso.find_product(order["product_id"])
+                current_cost = product.get("walletPricing", 0) if product else float('inf')
+                
+                # If the product cost is now higher than what we sold it for, abort!
+                if not product or current_cost > order["sell_price"]:
+                    logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
+                    result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}
+                else:
+                    result = await canboso.purchase(product_id=order["product_id"], quantity=order["quantity"])
+
+                if not result.get("success"):
+                    # Refund to wallet
+                    error_msg = result.get("message", "Unknown error")
+                    logger.warning("Canboso purchase failed for MUA %d. Refunding %d. Reason: %s", order_id, order["total_amount"], error_msg)
+                    new_balance = await db.update_balance(telegram_id, order["total_amount"])
+                    await db.update_order(order_id, status="failed")
+                    await db.add_transaction(
+                        user_id=order["user_id"], tx_type="refund", amount=order["total_amount"],
+                        balance_after=new_balance, description=f"Hoàn tiền (Lỗi mua {order_id})", reference_id=str(order_id)
+                    )
+                    if bot_app and telegram_id:
+                        msg = (f"❌ <b>Giao dịch thành công nhưng kho hết hạn!</b>\n\n"
+                               f"Bot không thể mua tự động từ nguồn với lỗi: {error_msg}.\n"
+                               f"Số tiền <b>{format_vnd(order['total_amount'])}</b> đã được hoàn trả vào số dư ví của Quý khách.")
+                        await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+
+                    # === PATCH C: ALERT ADMIN ===
+                    if bot_app and config.admin_chat_id:
+                        user_name = esc(user.get("full_name", "N/A")) if user else "N/A"
+                        user_tid = telegram_id or "?"
+                        admin_msg = (
+                            f"🚨 <b>CẢNH BÁO: Mua sỉ thất bại!</b>\n\n"
+                            f"👤 Khách: <b>{user_name}</b> (<code>{user_tid}</code>)\n"
+                            f"Đơn: MUA{order_id}\n"
+                            f"Sản phẩm: {esc(order['product_name'])}\n"
+                            f"SL: {order['quantity']}\n"
+                            f"Lỗi: <code>{esc(error_msg)}</code>\n\n"
+                            f"Đã hoàn {format_vnd(order['total_amount'])} vào ví khách.\n"
+                            f"⚠️ Kiểm tra số dư Canboso ngay!"
+                        )
+                        try:
+                            await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                        except Exception as admin_err:
+                            logger.error("Failed to alert admin: %s", admin_err)
+                else:
+                    delivered = result.get("deliveredAccounts", [])
+                    await db.update_order(
+                        order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
+                    )
+                    # Referral bonus disabled — uncomment to re-enable
+                    # await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
+                    if bot_app and telegram_id:
+                        accounts_text = format_account_list(delivered, lang)
+                        msg = t("purchase_success", lang,
+                            name=esc(order["product_name"]), quantity=order["quantity"],
+                            total=format_vnd(order["total_amount"]), accounts=accounts_text
+                        )
+                        await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
+
+                    # === NOTIFY ADMIN: New order completed ===
+                    if bot_app and config.admin_chat_id:
+                        try:
+                            cost = order["original_price"] * order["quantity"]
+                            profit = order["total_amount"] - cost
+                            time_str = now_vn().strftime("%H:%M %d/%m/%Y")
+                            admin_msg = (
+                                f"🛒 <b>ĐƠN HÀNG MỚI #{order_id}</b>\n\n"
+                                f"👤 Khách: {esc(user.get('full_name', 'N/A') if user else 'N/A')}\n"
+                                f"📦 SP: {esc(order['product_name'])} x{order['quantity']}\n"
+                                f"💰 Bán: {format_vnd(order['total_amount'])}\n"
+                                f"💵 Vốn: {format_vnd(cost)}\n"
+                                f"📊 Lãi: +{format_vnd(profit)}\n"
+                                f"💳 TT: QR chuyển khoản\n\n"
+                                f"⏰ {time_str}"
+                            )
+                            await bot_app.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
+                        except Exception:
+                            pass
         except Exception as e:
             logger.exception("Failed handling MUA %d: %s", order_id, e)
             await _mark_webhook(db, reference_code, "failed")

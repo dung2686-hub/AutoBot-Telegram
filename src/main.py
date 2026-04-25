@@ -24,7 +24,7 @@ from src.services.canboso import CanbosoClient
 from src.services import sepay_webhook
 
 from src.handlers.start import start_command, main_menu_callback, language_menu_callback, set_language_callback, api_menu_callback
-from src.handlers.shop import shop_menu, product_detail, quantity_change, buy_confirm, execute_purchase, qr_pay_setup, custom_product_detail
+from src.handlers.shop import shop_menu, product_detail, quantity_change, buy_confirm, execute_purchase, qr_pay_setup, custom_product_detail, custom_execute_purchase, custom_qr_pay_setup
 from src.handlers.wallet import wallet_menu, transaction_history, get_deposit_conversation
 from src.handlers.profile import profile_menu
 from src.handlers.history import history_menu, history_detail
@@ -129,6 +129,8 @@ def build_application() -> Application:
 
     # Custom Shop
     app.add_handler(CallbackQueryHandler(custom_product_detail, pattern=r"^custom:detail:"))
+    app.add_handler(CallbackQueryHandler(custom_execute_purchase, pattern=r"^custom:execute:"))
+    app.add_handler(CallbackQueryHandler(custom_qr_pay_setup, pattern=r"^custom:qr_pay:"))
 
     # Wallet
     app.add_handler(CallbackQueryHandler(wallet_menu, pattern=r"^menu:wallet$"))
