@@ -44,6 +44,16 @@ class Database:
             logger.info("Migration: added custom_note column")
         except Exception:
             pass
+        try:
+            await self.conn.execute("ALTER TABLE custom_products ADD COLUMN stock INTEGER DEFAULT 0")
+            logger.info("Migration: added stock column to custom_products")
+        except Exception:
+            pass
+        try:
+            await self.conn.execute("ALTER TABLE custom_products ADD COLUMN delivery_note TEXT DEFAULT ''")
+            logger.info("Migration: added delivery_note column to custom_products")
+        except Exception:
+            pass
 
     async def close(self):
         if self._conn:
@@ -446,10 +456,10 @@ class Database:
 
     # ── Custom Products ───────────────────────────────────
 
-    async def add_custom_product(self, name: str, price: int) -> dict:
+    async def add_custom_product(self, name: str, price: int, stock: int = 0) -> dict:
         cursor = await self.conn.execute(
-            "INSERT INTO custom_products (name, price) VALUES (?, ?)",
-            (name, price),
+            "INSERT INTO custom_products (name, price, stock) VALUES (?, ?, ?)",
+            (name, price, stock),
         )
         await self.conn.commit()
         row = await self._fetch_one("SELECT * FROM custom_products WHERE id = ?", (cursor.lastrowid,))
@@ -463,12 +473,25 @@ class Database:
         row = await self._fetch_one("SELECT * FROM custom_products WHERE id = ?", (product_id,))
         return dict(row) if row else None
 
-    async def update_custom_product(self, product_id: int, name: str = None, price: int = None):
+    async def update_custom_product(self, product_id: int, name: str = None, price: int = None, stock: int = None, delivery_note: str = None):
         if name is not None:
             await self.conn.execute("UPDATE custom_products SET name = ? WHERE id = ?", (name, product_id))
         if price is not None:
             await self.conn.execute("UPDATE custom_products SET price = ? WHERE id = ?", (price, product_id))
+        if stock is not None:
+            await self.conn.execute("UPDATE custom_products SET stock = ? WHERE id = ?", (stock, product_id))
+        if delivery_note is not None:
+            await self.conn.execute("UPDATE custom_products SET delivery_note = ? WHERE id = ?", (delivery_note, product_id))
         await self.conn.commit()
+
+    async def decrement_custom_stock(self, product_id: int, quantity: int = 1) -> bool:
+        """Atomically decrement stock. Returns False if insufficient."""
+        cursor = await self.conn.execute(
+            "UPDATE custom_products SET stock = stock - ? WHERE id = ? AND stock >= ?",
+            (quantity, product_id, quantity),
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
     async def delete_custom_product(self, product_id: int):
         await self.conn.execute("DELETE FROM custom_products WHERE id = ?", (product_id,))

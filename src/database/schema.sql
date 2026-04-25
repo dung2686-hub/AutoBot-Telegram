@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS custom_products (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
     price           INTEGER NOT NULL,              -- VND
+    stock           INTEGER DEFAULT 0,             -- Available quantity
+    delivery_note   TEXT DEFAULT '',                -- Shown after payment (e.g. "Contact admin...")
     is_active       INTEGER DEFAULT 1,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
