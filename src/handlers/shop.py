@@ -897,11 +897,11 @@ def _default_delivery_note() -> str:
     """Fallback delivery note when product has none configured."""
     parts = []
     if config.support_zalo:
-        parts.append(f"Zalo {config.support_zalo}")
+        parts.append(f"Zalo https://zalo.me/{config.support_zalo}")
     if config.support_telegram:
-        parts.append(f"Telegram @{config.support_telegram}")
+        parts.append(f"Telegram https://t.me/{config.support_telegram}")
     contact = " hoặc ".join(parts) if parts else "admin"
-    return f"Cung cấp mã đơn hàng và tài khoản Telegram cho admin để nhận hàng. Liên hệ qua {contact}"
+    return f"Cung cấp mã đơn hàng cho admin để nhận hàng. Liên hệ qua {contact}"
 
 
 async def _notify_admin_custom_order(context, user, product, quantity, total, order_id, payment_method):

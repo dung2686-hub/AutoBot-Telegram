@@ -63,7 +63,7 @@ def _support_text(lang: str) -> str:
     lines.append("")
 
     if config.support_zalo:
-        lines.append(f"📞 Zalo: {config.support_zalo}")
+        lines.append(f"📞 Zalo: https://zalo.me/{config.support_zalo}")
     if config.support_zalo_group:
         url = config.support_zalo_group
         if not url.startswith("http"):
