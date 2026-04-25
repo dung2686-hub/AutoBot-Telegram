@@ -155,15 +155,23 @@ async def custom_add_note_skip(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def _save_new_custom_product(context, update, note: str):
     """Save custom product with all collected fields."""
+    import logging
+    _logger = logging.getLogger(__name__)
+
     db = context.bot_data["db"]
     name = context.user_data.pop("custom_product_name", "")
     price = context.user_data.pop("custom_product_price", 0)
     stock = context.user_data.pop("custom_product_stock", 0)
     context.user_data.pop("active_conv", None)
 
+    _logger.info("Creating custom product: name=%s, price=%d, stock=%d, note=%s", name, price, stock, note[:30] if note else "")
+
     product = await db.add_custom_product(name, price, stock)
+    _logger.info("Product created: id=%d", product["id"])
+
     if note:
         await db.update_custom_product(product["id"], delivery_note=note)
+        _logger.info("Delivery note saved for product %d", product["id"])
 
     text = (
         f"✅ <b>Đã thêm sản phẩm:</b>\n\n"
