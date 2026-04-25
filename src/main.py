@@ -16,6 +16,7 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 from telegram import BotCommand, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import RetryAfter
 
 from src.config import config
 from src.database.db import Database
@@ -66,6 +67,10 @@ async def post_init(application: Application):
         BotCommand("backup", "Tải DB ngay (admin)"),
     ])
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+
+    # Cache bot info to avoid API call on every /start
+    bot_info = await application.bot.get_me()
+    application.bot_data["bot_info"] = bot_info
 
     logger.info("Bot initialized successfully")
 
@@ -277,10 +282,17 @@ async def run_scheduler(application, db: Database, canboso: CanbosoClient):
             else:
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Mở Shop", callback_data="menu:shop")]])
 
-            # Broadcast safely
+            # Broadcast safely with RetryAfter handling
             for uid in user_ids:
                 try:
                     await application.bot.send_message(chat_id=uid, text=msg, reply_markup=kb, parse_mode="HTML")
+                except RetryAfter as e:
+                    logger.warning("Broadcast rate limited, sleeping %s seconds", e.retry_after)
+                    await asyncio.sleep(e.retry_after + 1)
+                    try:
+                        await application.bot.send_message(chat_id=uid, text=msg, reply_markup=kb, parse_mode="HTML")
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 await asyncio.sleep(0.05)

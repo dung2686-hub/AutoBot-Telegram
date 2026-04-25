@@ -176,4 +176,5 @@ def get_support_conversation() -> ConversationHandler:
         ],
         per_message=False,
         allow_reentry=True,
+        conversation_timeout=300,  # 5 min auto-cancel if user abandons
     )

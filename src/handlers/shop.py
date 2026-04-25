@@ -502,8 +502,8 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         reference_id=str(order["id"]),
     )
 
-    # Check and pay referral bonus
-    await process_referral_bonus(db, context.application, order["id"], user["id"], total)
+    # Referral bonus disabled — uncomment to re-enable
+    # await process_referral_bonus(db, context.application, order["id"], user["id"], total)
 
     # === SEND RESULT — use send_message (same as QR flow which works) ===
     accounts_text = format_account_list(delivered, lang)

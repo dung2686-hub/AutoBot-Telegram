@@ -18,66 +18,40 @@ BOT_NAME = "AI Store Bot"
 @error_handler
 @ensure_user
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command — show welcome + main menu in 4 blocks."""
+    """Handle /start command — show welcome + main menu."""
     bot = context.bot
     telegram_id = update.effective_user.id
     first_name = update.effective_user.first_name
     db = context.bot_data["db"]
 
-    # 1. Handle deep linking for referral
+    # Handle deep linking (keep silently for old ref links)
     args = context.args
     if args and len(args) > 0:
         arg = args[0]
         if arg.startswith("ref_"):
             try:
                 referrer_id = int(arg.split("_")[1])
-                # Save referral
                 await db.set_referral(telegram_id, referrer_id)
             except ValueError:
                 pass
 
-    bot_info = await bot.get_me()
-    bot_username = bot_info.username
+    bot_info = context.bot_data.get("bot_info") or await bot.get_me()
     bot_display_name = bot_info.first_name
+    lang = context.user_data.get("lang", "vi")
 
-    ref_link = f"https://t.me/{bot_username}?start=ref_{telegram_id}"
-
-    # Block 1: Welcome & Referral Program
-    msg1 = (
-        f"👋 Xin chào {first_name} đã đến với <b>{esc(bot_display_name)}</b>!\n\n"
-        f"🎁 Chương trình giới thiệu bạn bè\n\n"
-        f"• Chia sẻ link bot kèm mã giới thiệu của bạn.\n"
-        f"• Khi người được mời phát sinh đơn hàng đầu tiên, bạn nhận 10% giá trị đơn vào ví.\n"
-        f"• Mỗi người mới chỉ được tính thưởng 1 lần.\n"
-        f"• Không áp dụng cho tự giới thiệu.\n\n"
-        f"🔗 Link giới thiệu của bạn:\n{ref_link}"
-    )
-
-    # Block 2: Promo
-    msg2 = (
-        f"🎁 Khuyến mãi:\n"
-        f"🛍️ Mua số lượng nhiều sẽ tự động có chiết khấu theo chính sách hiện hành!"
-    )
-
-    # Block 3 & 4: Guide and Menu
-    msg3 = (
+    text = (
+        f"👋 Xin chào <b>{esc(first_name)}</b> đã đến với <b>{esc(bot_display_name)}</b>!\n\n"
+        f"🛍️ Mua số lượng lớn vui lòng liên hệ Admin để được giá tốt nhất!\n\n"
         f"📌 Hướng dẫn nhanh:\n"
         f"1. Nhấn nút \"🛍️ Mua hàng\".\n"
         f"2. Chọn sản phẩm bạn muốn mua.\n"
         f"3. Chọn thanh toán bằng QR và quét mã để thanh toán.\n"
-        f"4. Sau khi thanh toán xong, bot sẽ tự động xử lý đơn hàng."
+        f"4. Sau khi thanh toán xong, bot sẽ tự động xử lý đơn hàng.\n\n"
+        f"📌 Vui lòng chọn menu:"
     )
-    
-    lang = context.user_data.get("lang", "vi")
-    msg4 = t("menu_prompt", lang) if t("menu_prompt", lang) != "menu_prompt" else "📌 Vui lòng chọn menu:"
-    
-    keyboard = main_menu_keyboard(lang=lang)
 
-    # Send blocks sequentially
-    await update.message.reply_text(msg1, disable_web_page_preview=True, parse_mode="HTML")
-    await update.message.reply_text(msg2, parse_mode="HTML")
-    await update.message.reply_text(msg3, parse_mode="HTML")
-    await update.message.reply_text(msg4, reply_markup=keyboard, parse_mode="HTML")
+    keyboard = main_menu_keyboard(lang=lang)
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @error_handler

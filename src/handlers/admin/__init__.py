@@ -83,4 +83,5 @@ def get_admin_conversation() -> ConversationHandler:
         ],
         per_message=False,
         allow_reentry=True,
+        conversation_timeout=600,  # 10 min for admin (longer due to complex flows)
     )

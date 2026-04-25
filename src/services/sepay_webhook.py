@@ -402,8 +402,8 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                 await db.update_order(
                     order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=delivered
                 )
-                # Check and pay referral bonus
-                await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
+                # Referral bonus disabled — uncomment to re-enable
+                # await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
                 if bot_app and telegram_id:
                     accounts_text = format_account_list(delivered, lang)
                     msg = t("purchase_success", lang,
