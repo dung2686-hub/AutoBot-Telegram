@@ -205,6 +205,95 @@ async def quickcredit_execute(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.pop("active_conv", None)
     return ConversationHandler.END
 
+
+@error_handler
+@ensure_user
+@admin_only
+async def order_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: /order <id> — look up order details."""
+    if not context.args:
+        await update.message.reply_text(
+            "🔍 <b>Tra cứu đơn hàng</b>\n\n"
+            "Cách dùng: <code>/order 59</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        order_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Mã đơn phải là số. VD: <code>/order 59</code>", parse_mode="HTML")
+        return
+
+    db = context.bot_data["db"]
+    order = await db.get_order(order_id)
+    if not order:
+        await update.message.reply_text(f"❌ Không tìm thấy đơn hàng <b>#{order_id}</b>.", parse_mode="HTML")
+        return
+
+    # Look up customer
+    user = await db.get_user_by_id(order["user_id"])
+    if user:
+        customer_name = esc(user.get("full_name", "") or "N/A")
+        customer_tg = user.get("telegram_id", "?")
+        customer_username = user.get("username", "") or ""
+        customer_line = f"<b>{customer_name}</b> (<code>{customer_tg}</code>)"
+        if customer_username:
+            customer_line += f" @{customer_username}"
+    else:
+        customer_line = f"user_id #{order['user_id']} (đã xóa?)"
+
+    status_map = {"completed": "✅ Hoàn tất", "pending": "⏳ Chờ TT", "failed": "❌ Thất bại", "expired": "⏱ Hết hạn"}
+    status_text = status_map.get(order["status"], order["status"])
+
+    cost = order["original_price"] * order["quantity"]
+    profit = order["total_amount"] - cost
+
+    text = (
+        f"🧾 <b>ĐƠN HÀNG #{order_id}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"👤 Khách: {customer_line}\n"
+        f"📦 SP: <b>{esc(order.get('product_name', 'N/A'))}</b>\n"
+        f"📦 SL: <b>{order['quantity']}</b>\n"
+        f"💰 Giá bán: <b>{format_vnd(order['sell_price'])}</b> x{order['quantity']} = <b>{format_vnd(order['total_amount'])}</b>\n"
+        f"💵 Giá vốn: {format_vnd(order['original_price'])} x{order['quantity']} = {format_vnd(cost)}\n"
+        f"📊 Lãi: <b>+{format_vnd(profit)}</b>\n"
+        f"📋 Trạng thái: <b>{status_text}</b>\n"
+        f"📅 Thời gian: {format_date(order.get('created_at', ''))}\n"
+    )
+
+    if order.get("order_code"):
+        text += f"🔖 Mã Canboso: <code>{esc(order['order_code'])}</code>\n"
+
+    # Show delivered accounts if completed
+    import json
+    delivered_raw = order.get("delivered_data", "[]")
+    try:
+        delivered = json.loads(delivered_raw) if isinstance(delivered_raw, str) else delivered_raw
+    except (json.JSONDecodeError, TypeError):
+        delivered = []
+
+    if delivered:
+        text += f"\n🔑 <b>Tài khoản đã giao ({len(delivered)}):</b>\n"
+        for i, acc in enumerate(delivered[:5]):
+            acc_info = " | ".join(f"{k}: {v}" for k, v in acc.items() if not k.startswith("_") and v)
+            text += f"  {i+1}. <code>{esc(acc_info)}</code>\n"
+        if len(delivered) > 5:
+            text += f"  ... và {len(delivered) - 5} tài khoản khác\n"
+
+    keyboard = []
+    if user:
+        keyboard.append([
+            InlineKeyboardButton("👤 Xem user", callback_data=f"admin:quickcredit:{user['telegram_id']}"),
+        ])
+
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+        parse_mode="HTML",
+    )
+
+
 @error_handler
 @ensure_user
 @admin_only
