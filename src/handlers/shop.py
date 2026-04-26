@@ -48,7 +48,10 @@ async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
     markup_price = max(markup_price, min_sell)
 
     if m["fixed_price"] > 0:
-        return max(m["fixed_price"], min_sell)
+        sell = max(m["fixed_price"], min_sell)
+        if sell == min_sell:
+            return _round_up_1000(sell)
+        return sell
     return _round_up_1000(markup_price)
 
 
@@ -554,7 +557,7 @@ async def _do_execute_purchase(update, context, query, telegram_id):
             time_str = now_vn().strftime("%H:%M %d/%m/%Y")
             admin_msg = (
                 f"🛒 <b>ĐƠN HÀNG MỚI</b>\n\n"
-                f"👤 Khách: {esc(user.get('full_name', 'N/A'))}\n"
+                f"👤 Khách: {esc(user.get('full_name', 'N/A'))} (<code>{telegram_id}</code>)\n"
                 f"📦 SP: {esc(product.get('product_name', ''))} x{quantity}\n"
                 f"💰 Bán: {format_vnd(total)}\n"
                 f"💵 Vốn: {format_vnd(cost)}\n"

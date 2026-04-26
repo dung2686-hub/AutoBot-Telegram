@@ -486,7 +486,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                             time_str = now_vn().strftime("%H:%M %d/%m/%Y")
                             admin_msg = (
                                 f"🛒 <b>ĐƠN HÀNG MỚI #{order_id}</b>\n\n"
-                                f"👤 Khách: {esc(user.get('full_name', 'N/A') if user else 'N/A')}\n"
+                                f"👤 Khách: {esc(user.get('full_name', 'N/A') if user else 'N/A')} (<code>{telegram_id}</code>)\n"
                                 f"📦 SP: {esc(order['product_name'])} x{order['quantity']}\n"
                                 f"💰 Bán: {format_vnd(order['total_amount'])}\n"
                                 f"💵 Vốn: {format_vnd(cost)}\n"
