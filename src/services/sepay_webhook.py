@@ -259,7 +259,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         except Exception as e:
             logger.exception("Failed handling NAP %d: %s", deposit_id, e)
             await _mark_webhook(db, reference_code, "failed")
-            return web.json_response({"success": False, "error": str(e)}, status=500)
+            return web.json_response({"success": False, "error": "internal error"}, status=500)
 
     elif prefix == "MUA":
         order_id = int(code_id)
@@ -500,7 +500,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
         except Exception as e:
             logger.exception("Failed handling MUA %d: %s", order_id, e)
             await _mark_webhook(db, reference_code, "failed")
-            return web.json_response({"success": False, "error": str(e)}, status=500)
+            return web.json_response({"success": False, "error": "internal error"}, status=500)
 
     await _mark_webhook(db, reference_code, "completed")
     return web.json_response({"success": True})
