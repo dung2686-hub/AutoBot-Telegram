@@ -537,18 +537,32 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     accounts_text = format_account_list(delivered, lang)
     canboso_msg = result.get("message", "")
     
-    # If no accounts were delivered (like Slot products), but Canboso provided a detailed message, use it
-    if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
-        accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{esc(canboso_msg)}"
+    # If it's a Slot product (no delivered accounts), generate the professional instruction manually
+    if not delivered and product.get("isSlotProduct"):
+        customer_email = context.user_data.get("slot_purchase", {}).get("email", "")
+        order_code_display = result.get("orderCode") or f"ORD{order['id']}"
+        platform = "OpenAI" if "chatgpt" in product.get("product_name", "").lower() else "nhà cung cấp"
+        
+        slot_msg = (
+            f"Đã nhận thanh toán cho đơn {order_code_display}. Đã mời <b>{customer_email}</b> vào workspace.\n\n"
+            f"⚠️ <b>Lưu ý:</b> Không được thêm email khác vào workspace. Nếu phát hiện vi phạm, "
+            f"hệ thống sẽ kick người được mời thêm và kick người mời, đồng thời không hoàn tiền.\n\n"
+            f"<b>Hướng dẫn nhận slot:</b>\n"
+            f"1) Khách hàng kiểm tra email.\n"
+            f"2) Tìm email từ {platform}.\n"
+            f"3) Nhấn \"Join workspace\".\n"
+            f"4) Đăng nhập để vào workspace."
+        )
+        accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{slot_msg}"
+        await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Hướng dẫn Slot": slot_msg}])
     else:
         accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
         if canboso_msg and canboso_msg != "Mua hàng thành công":
             accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
         accounts_text = accounts_wrapper
 
-    # Also save message to delivered_data if it's empty so history can show it
-    if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
-        await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
+        if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
+            await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
 
     text = t("purchase_success", lang,
         name=esc(product.get("product_name", "")),

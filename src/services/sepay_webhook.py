@@ -478,16 +478,31 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                         accounts_text = format_account_list(delivered, lang)
                         canboso_msg = result.get("message", "")
                         
-                        # Use the Canboso message as delivery text if no accounts are returned (typical for Slot products)
-                        if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
-                            accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{esc(canboso_msg)}"
-                            # Save message to delivered_data if it's empty so history can show it
-                            await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
+                        # If it's a Slot product (no delivered accounts), generate the professional instruction manually
+                        if not delivered and order.get("slot_months"):
+                            platform = "OpenAI" if "chatgpt" in order.get("product_name", "").lower() else "nhà cung cấp"
+                            order_code_display = result.get("orderCode") or f"ORD{order_id}"
+                            
+                            slot_msg = (
+                                f"Đã nhận thanh toán cho đơn {order_code_display}. Đã mời <b>{order.get('customer_email', 'bạn')}</b> vào workspace.\n\n"
+                                f"⚠️ <b>Lưu ý:</b> Không được thêm email khác vào workspace. Nếu phát hiện vi phạm, "
+                                f"hệ thống sẽ kick người được mời thêm và kick người mời, đồng thời không hoàn tiền.\n\n"
+                                f"<b>Hướng dẫn nhận slot:</b>\n"
+                                f"1) Khách hàng kiểm tra email.\n"
+                                f"2) Tìm email từ {platform}.\n"
+                                f"3) Nhấn \"Join workspace\".\n"
+                                f"4) Đăng nhập để vào workspace."
+                            )
+                            accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{slot_msg}"
+                            await db.update_order(order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Hướng dẫn Slot": slot_msg}])
                         else:
                             accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
                             if canboso_msg and canboso_msg != "Mua hàng thành công":
                                 accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
                             accounts_text = accounts_wrapper
+                            
+                            if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
+                                await db.update_order(order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
 
                         msg = t("purchase_success", lang,
                             name=esc(order["product_name"]), quantity=order["quantity"],
