@@ -8,7 +8,6 @@ from aiohttp import web
 from src.config import config
 from src.utils.formatters import format_vnd, now_vn, esc, format_account_list
 from src.i18n import t
-from src.services.referral import process_referral_bonus
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
@@ -234,7 +233,7 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     lang = user.get("language", "vi") if user else "vi"
                     msg = t("deposit_success", lang, amount=format_vnd(amount), balance=format_vnd(new_balance))
                     if deposit['status'] != 'pending':
-                        msg = f"⏱ <b>Khoản nạp trễ được xử lý!</b>\n\n" + msg
+                        msg = "⏱ <b>Khoản nạp trễ được xử lý!</b>\n\n" + msg
                     await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="HTML")
                 except Exception as e:
                     logger.error("Failed to notify user %d: %s", telegram_id, e)
@@ -477,6 +476,19 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     # await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
                     if bot_app and telegram_id:
                         accounts_text = format_account_list(delivered, lang)
+                        canboso_msg = result.get("message", "")
+                        
+                        # Use the Canboso message as delivery text if no accounts are returned (typical for Slot products)
+                        if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
+                            accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{esc(canboso_msg)}"
+                            # Save message to delivered_data if it's empty so history can show it
+                            await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
+                        else:
+                            accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
+                            if canboso_msg and canboso_msg != "Mua hàng thành công":
+                                accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
+                            accounts_text = accounts_wrapper
+
                         msg = t("purchase_success", lang,
                             name=esc(order["product_name"]), quantity=order["quantity"],
                             total=format_vnd(order["total_amount"]), accounts=accounts_text

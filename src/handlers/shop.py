@@ -535,6 +535,20 @@ async def _do_execute_purchase(update, context, query, telegram_id):
 
     # === SEND RESULT — use send_message (same as QR flow which works) ===
     accounts_text = format_account_list(delivered, lang)
+    canboso_msg = result.get("message", "")
+    
+    # If no accounts were delivered (like Slot products), but Canboso provided a detailed message, use it
+    if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
+        accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{esc(canboso_msg)}"
+    else:
+        accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
+        if canboso_msg and canboso_msg != "Mua hàng thành công":
+            accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
+        accounts_text = accounts_wrapper
+
+    # Also save message to delivered_data if it's empty so history can show it
+    if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
+        await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
 
     text = t("purchase_success", lang,
         name=esc(product.get("product_name", "")),

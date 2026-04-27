@@ -43,10 +43,7 @@ VI = {
     ),
     "purchase_success": (
         "✅ <b>Mua hàng thành công!</b>\n\n"
-        "🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "{accounts}\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+        "{accounts}\n\n"
         "📦 {name} x{quantity}\n"
         "💰 Thanh toán: {total}"
     ),

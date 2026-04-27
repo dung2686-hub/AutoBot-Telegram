@@ -43,10 +43,7 @@ EN = {
     ),
     "purchase_success": (
         "✅ <b>Purchase successful!</b>\n\n"
-        "🔐 <b>YOUR ACCOUNT:</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "{accounts}\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+        "{accounts}\n\n"
         "📦 {name} x{quantity}\n"
         "💰 Paid: {total}"
     ),
