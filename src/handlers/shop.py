@@ -4,7 +4,7 @@ import io
 from urllib.parse import quote
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 
 from src.config import config
 from src.i18n import t
@@ -140,6 +140,9 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await canboso.refresh_cache()
     product = canboso.find_product(product_id)
     logger.info("[PRODUCT-DETAIL] product found: %s", product is not None)
+
+    if product and product.get("isSlotProduct"):
+        return await slot_product_detail(update, context, product, product_id)
 
     if not product:
         await query.edit_message_text(
@@ -289,17 +292,24 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    slot_data = context.user_data.get("slot_purchase", {})
+    customer_email = slot_data.get("email", "") if product.get("isSlotProduct") else ""
+    api_qty = 1 if product.get("isSlotProduct") else quantity
+    api_months = quantity if product.get("isSlotProduct") else 0
+
     # Create a pending order
     order = await db.create_order(
         user_id=db_user["id"],
         product_id=product_id,
         product_name=product.get("product_name", ""),
-        quantity=quantity,
+        quantity=api_qty,
         original_price=product.get("walletPricing", 0),
         sell_price=sell_price,
         order_code="",
         delivered_data=[],
-        status="pending"
+        status="pending",
+        customer_email=customer_email,
+        slot_months=api_months,
     )
     
     order_id = order["id"]
@@ -459,9 +469,16 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     try:
+        slot_data = context.user_data.get("slot_purchase", {})
+        customer_email = slot_data.get("email", "") if product.get("isSlotProduct") else ""
+        api_qty = 1 if product.get("isSlotProduct") else quantity
+        api_months = quantity if product.get("isSlotProduct") else 0
+
         result = await canboso.purchase(
             product_id=product_id,
-            quantity=quantity,
+            quantity=api_qty,
+            customer_email=customer_email,
+            slot_months=api_months,
         )
     except Exception as e:
         refund_balance = await db.update_balance(telegram_id, total)
@@ -579,6 +596,138 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         except Exception:
             pass
 
+# ── Slot Products Conversation ────────────────────────────────
+WAITING_SLOT_EMAIL = 1
+
+async def slot_product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict, product_id: str):
+    """Handle product detail for Slot products (Duration selection)."""
+    query = update.callback_query
+    lang = context.user_data.get("lang", "vi")
+    db = context.bot_data["db"]
+    
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
+    
+    durations = product.get("slotDurations", [1])
+    if not durations:
+        durations = [1]
+        
+    text = t("product_detail", lang,
+        name=esc(shorten_product_name(product.get("product_name", ""))),
+        description=esc(product.get("description", "")),
+        price=format_vnd(sell_price),
+        slot_info="",
+        quantity=1,
+    )
+    
+    custom_note = await db.get_custom_note(product_id)
+    if custom_note:
+        text += f"\n\n📌 <b>Ghi chú từ shop:</b>\n{esc(custom_note)}"
+        
+    text += f"\n\n{t('slot_duration_title', lang, name=esc(product.get('product_name', '')))}"
+    
+    keyboard = []
+    for dur in durations:
+        keyboard.append([InlineKeyboardButton(f"{dur} tháng", callback_data=f"shop:slot_email:{product_id}:{dur}")])
+        
+    keyboard.append([InlineKeyboardButton(t("btn_back_menu", lang), callback_data="menu:shop")])
+    
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+@error_handler
+@ensure_user
+async def slot_ask_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask for email after selecting duration."""
+    query = update.callback_query
+    await query.answer()
+    
+    parts = query.data.split(":")
+    product_id = parts[2]
+    months = int(parts[3]) if len(parts) > 3 else 1
+    
+    context.user_data["slot_purchase"] = {
+        "product_id": product_id,
+        "months": months
+    }
+    
+    lang = context.user_data.get("lang", "vi")
+    text = t("slot_email_prompt", lang)
+    
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_cancel", lang), callback_data="menu:shop")]
+    ])
+    
+    await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+    return WAITING_SLOT_EMAIL
+
+@error_handler
+@ensure_user
+async def slot_receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive email, validate, and go to checkout."""
+    lang = context.user_data.get("lang", "vi")
+    email = update.message.text.strip()
+    
+    if "@" not in email or "." not in email or len(email) < 5:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(t("btn_cancel", lang), callback_data="menu:shop")]])
+        await update.message.reply_text(t("slot_email_invalid", lang), reply_markup=kb)
+        return WAITING_SLOT_EMAIL
+        
+    slot_data = context.user_data.get("slot_purchase", {})
+    if not slot_data:
+        return ConversationHandler.END
+        
+    product_id = slot_data["product_id"]
+    months = slot_data["months"]
+    
+    db = context.bot_data["db"]
+    canboso = context.bot_data["canboso"]
+    
+    product = canboso.find_product(product_id)
+    if not product:
+        await update.message.reply_text(t("product_out_of_stock", lang), reply_markup=back_to_menu_keyboard(lang))
+        return ConversationHandler.END
+        
+    sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
+    total = sell_price * months
+    
+    db_user = context.user_data["db_user"]
+    balance = db_user["balance"]
+    
+    context.user_data["slot_purchase"]["email"] = email
+    
+    text = (
+        f"🛒 <b>Xác nhận đơn hàng Slot</b>\n\n"
+        f"📧 Email nhận: <b>{esc(email)}</b>\n"
+        f"⏱ Thời gian: <b>{months} tháng</b>\n"
+        f"💰 Đơn giá: {format_vnd(sell_price)}/tháng\n"
+        f"💵 Tổng thanh toán: <b>{format_vnd(total)}</b>\n\n"
+        f"💳 Số dư ví: {format_vnd(balance)}\n\n"
+        f"<b>Vui lòng chọn phương thức thanh toán:</b>"
+    )
+    
+    keyboard = payment_options_keyboard(product_id, months, lang)
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    return ConversationHandler.END
+
+async def slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("slot_purchase", None)
+    return ConversationHandler.END
+
+def get_slot_purchase_conversation() -> ConversationHandler:
+    return ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(slot_ask_email, pattern=r"^shop:slot_email:")
+        ],
+        states={
+            WAITING_SLOT_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, slot_receive_email)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(slot_cancel, pattern=r"^menu:")
+        ],
+        per_message=False,
+        allow_reentry=True,
+    )
 
 # ── Custom Products (Customer-facing) ─────────────────────
 

@@ -55,6 +55,17 @@ class Database:
         except Exception:
             pass
 
+        try:
+            await self.conn.execute("ALTER TABLE orders ADD COLUMN customer_email TEXT DEFAULT ''")
+            logger.info("Migration: added customer_email column to orders")
+        except Exception:
+            pass
+        try:
+            await self.conn.execute("ALTER TABLE orders ADD COLUMN slot_months INTEGER DEFAULT 0")
+            logger.info("Migration: added slot_months column to orders")
+        except Exception:
+            pass
+
     async def close(self):
         if self._conn:
             await self._conn.close()
@@ -273,17 +284,17 @@ class Database:
         self, user_id: int, product_id: str,
         product_name: str, quantity: int, original_price: int,
         sell_price: int, order_code: str = "", delivered_data: list = None,
-        status: str = "completed"
+        status: str = "completed", customer_email: str = "", slot_months: int = 0
     ) -> dict:
         delivered_data = delivered_data or []
         total = sell_price * quantity
         await self.conn.execute(
             """INSERT INTO orders
             (user_id, order_code, product_id, product_name, quantity,
-             original_price, sell_price, total_amount, delivered_data, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             original_price, sell_price, total_amount, delivered_data, status, customer_email, slot_months)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, order_code, product_id, product_name, quantity,
-             original_price, sell_price, total, json.dumps(delivered_data), status),
+             original_price, sell_price, total, json.dumps(delivered_data), status, customer_email, slot_months),
         )
         await self.conn.commit()
         row = await self._fetch_one(

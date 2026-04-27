@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS orders (
     total_amount    INTEGER NOT NULL,              -- sell_price * quantity
     delivered_data  TEXT DEFAULT '[]',             -- JSON: [{user, password, verifyEmail}]
     status          TEXT DEFAULT 'completed',
+    customer_email  TEXT DEFAULT '',               -- Slot email
+    slot_months     INTEGER DEFAULT 0,             -- Slot duration
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

@@ -427,7 +427,12 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
                     result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}
                 else:
-                    result = await canboso.purchase(product_id=order["product_id"], quantity=order["quantity"])
+                    result = await canboso.purchase(
+                        product_id=order["product_id"], 
+                        quantity=order["quantity"],
+                        customer_email=order.get("customer_email", ""),
+                        slot_months=order.get("slot_months", 0)
+                    )
 
                 if not result.get("success"):
                     # Refund to wallet
