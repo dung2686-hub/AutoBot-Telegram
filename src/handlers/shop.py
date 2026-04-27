@@ -1,18 +1,15 @@
 import logging
 import math
-import io
-from urllib.parse import quote
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
 from src.utils.formatters import format_vnd, shorten_product_name, esc, format_account_list, now_vn
-from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, confirm_cancel_keyboard, payment_options_keyboard
+from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, payment_options_keyboard
 from src.services.vietqr import generate_qr_image, get_bank_display_name
-from src.services.referral import process_referral_bonus
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +373,6 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
     canboso = context.bot_data["canboso"]
-    db_user = context.user_data["db_user"]
 
     parts = query.data.split(":")
     product_id = parts[2]
@@ -809,7 +805,6 @@ def _custom_quantity_keyboard(product_id: int, max_qty: int, lang: str = "vi") -
 
 async def _show_custom_buy_confirm(query, context, product, quantity, lang):
     """Show payment summary for custom product."""
-    db = context.bot_data["db"]
     db_user = context.user_data["db_user"]
 
     price = product["price"]
@@ -864,7 +859,6 @@ async def _do_custom_execute(update, context, query, telegram_id):
     """Internal custom purchase logic via wallet."""
     lang = context.user_data.get("lang", "vi")
     db = context.bot_data["db"]
-    db_user = context.user_data["db_user"]
 
     parts = query.data.split(":")
     product_id = int(parts[2])
