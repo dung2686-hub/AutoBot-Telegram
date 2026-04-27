@@ -76,6 +76,76 @@ def format_account_list(accounts: list[dict], lang: str = "vi") -> str:
     return "\n".join(lines)
 
 
+def format_account_delivery(
+    accounts: list[dict],
+    lang: str = "vi",
+    system_message: str = "",
+) -> str:
+    """Format normal account delivery with the legacy customer wrapper."""
+    accounts_text = format_account_list(accounts, lang)
+    title = "🔐 <b>YOUR ACCOUNT:</b>" if lang == "en" else "🔐 <b>TÀI KHOẢN CỦA BẠN:</b>"
+    divider = "━━━━━━━━━━━━━━━━━━"
+    wrapped = f"{title}\n{divider}\n{accounts_text}\n{divider}"
+
+    if system_message and system_message != "Mua hàng thành công":
+        label = "System notice" if lang == "en" else "Thông báo từ hệ thống"
+        wrapped += f"\n\n📝 <b>{label}:</b>\n{esc(system_message)}"
+
+    return wrapped
+
+
+def build_slot_delivery_instruction(
+    product_name: str,
+    order_code: str,
+    customer_email: str,
+    lang: str = "vi",
+) -> str:
+    """Build Slot delivery instructions and include the customer's email."""
+    is_openai = "chatgpt" in product_name.lower()
+    platform = "OpenAI" if is_openai else "nhà cung cấp"
+    safe_order_code = esc(order_code)
+    safe_email = esc(customer_email or "bạn")
+
+    if lang == "en":
+        platform = "OpenAI" if is_openai else "the provider"
+        safe_email = esc(customer_email or "you")
+        return (
+            f"Payment received for order {safe_order_code}. "
+            f"<b>{safe_email}</b> has been invited to the workspace.\n\n"
+            "⚠️ <b>Note:</b> Do not add another email to the workspace. "
+            "If a violation is detected, the invited user and inviter may be removed without refund.\n\n"
+            "<b>How to receive your slot:</b>\n"
+            "1) Check your email inbox.\n"
+            f"2) Find the email from {platform}.\n"
+            '3) Click "Join workspace".\n'
+            "4) Sign in to access the workspace."
+        )
+
+    return (
+        f"Đã nhận thanh toán cho đơn {safe_order_code}. "
+        f"Đã mời <b>{safe_email}</b> vào workspace.\n\n"
+        "⚠️ <b>Lưu ý:</b> Không được thêm email khác vào workspace. Nếu phát hiện vi phạm, "
+        "hệ thống sẽ kick người được mời thêm và kick người mời, đồng thời không hoàn tiền.\n\n"
+        "<b>Hướng dẫn nhận slot:</b>\n"
+        "1) Khách hàng kiểm tra email.\n"
+        f"2) Tìm email từ {platform}.\n"
+        '3) Nhấn "Join workspace".\n'
+        "4) Đăng nhập để vào workspace."
+    )
+
+
+def format_slot_delivery(
+    product_name: str,
+    order_code: str,
+    customer_email: str,
+    lang: str = "vi",
+) -> tuple[str, str]:
+    """Return display text and persisted instruction payload for Slot orders."""
+    instruction = build_slot_delivery_instruction(product_name, order_code, customer_email, lang)
+    title = "📝 <b>Info & Instructions:</b>" if lang == "en" else "📝 <b>Thông tin & Hướng dẫn:</b>"
+    return f"{title}\n{instruction}", instruction
+
+
 def format_date(date_str: str) -> str:
     """Format ISO date to readable VN time: UTC -> GMT+7."""
     if not date_str:

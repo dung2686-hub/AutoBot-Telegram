@@ -6,7 +6,13 @@ from collections import defaultdict
 import re
 from aiohttp import web
 from src.config import config
-from src.utils.formatters import format_vnd, now_vn, esc, format_account_list
+from src.utils.formatters import (
+    format_account_delivery,
+    format_slot_delivery,
+    format_vnd,
+    now_vn,
+    esc,
+)
 from src.i18n import t
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -426,9 +432,10 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     logger.warning(f"Slippage detected! Order {order_id}. New Canboso Cost: {current_cost}, Customer Paid: {order['sell_price']}")
                     result = {"success": False, "message": "Sản phẩm đổi giá hoặc ngừng bán từ hệ thống tổng"}
                 else:
+                    api_quantity = 1 if order.get("slot_months") else order["quantity"]
                     result = await canboso.purchase(
                         product_id=order["product_id"], 
-                        quantity=order["quantity"],
+                        quantity=api_quantity,
                         customer_email=order.get("customer_email", ""),
                         slot_months=order.get("slot_months", 0)
                     )
@@ -475,31 +482,24 @@ async def handle_sepay_webhook(request: web.Request) -> web.Response:
                     # Referral bonus disabled — uncomment to re-enable
                     # await process_referral_bonus(db, bot_app, order_id, order["user_id"], order["total_amount"])
                     if bot_app and telegram_id:
-                        accounts_text = format_account_list(delivered, lang)
                         canboso_msg = result.get("message", "")
-                        
-                        # If it's a Slot product (no delivered accounts), generate the professional instruction manually
-                        if not delivered and order.get("slot_months"):
-                            platform = "OpenAI" if "chatgpt" in order.get("product_name", "").lower() else "nhà cung cấp"
+
+                        if order.get("slot_months"):
                             order_code_display = result.get("orderCode") or f"ORD{order_id}"
-                            
-                            slot_msg = (
-                                f"Đã nhận thanh toán cho đơn {order_code_display}. Đã mời <b>{order.get('customer_email', 'bạn')}</b> vào workspace.\n\n"
-                                f"⚠️ <b>Lưu ý:</b> Không được thêm email khác vào workspace. Nếu phát hiện vi phạm, "
-                                f"hệ thống sẽ kick người được mời thêm và kick người mời, đồng thời không hoàn tiền.\n\n"
-                                f"<b>Hướng dẫn nhận slot:</b>\n"
-                                f"1) Khách hàng kiểm tra email.\n"
-                                f"2) Tìm email từ {platform}.\n"
-                                f"3) Nhấn \"Join workspace\".\n"
-                                f"4) Đăng nhập để vào workspace."
+                            accounts_text, slot_msg = format_slot_delivery(
+                                order.get("product_name", ""),
+                                order_code_display,
+                                order.get("customer_email", ""),
+                                lang,
                             )
-                            accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{slot_msg}"
-                            await db.update_order(order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Hướng dẫn Slot": slot_msg}])
+                            await db.update_order(
+                                order_id,
+                                status="completed",
+                                order_code=result.get("orderCode", ""),
+                                delivered_data=[{"Hướng dẫn Slot": slot_msg}],
+                            )
                         else:
-                            accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
-                            if canboso_msg and canboso_msg != "Mua hàng thành công":
-                                accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
-                            accounts_text = accounts_wrapper
+                            accounts_text = format_account_delivery(delivered, lang, canboso_msg)
                             
                             if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
                                 await db.update_order(order_id, status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])

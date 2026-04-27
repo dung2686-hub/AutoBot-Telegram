@@ -7,7 +7,14 @@ from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 from src.config import config
 from src.i18n import t
 from src.utils.decorators import ensure_user, error_handler
-from src.utils.formatters import format_vnd, shorten_product_name, esc, format_account_list, now_vn
+from src.utils.formatters import (
+    format_account_delivery,
+    format_slot_delivery,
+    format_vnd,
+    shorten_product_name,
+    esc,
+    now_vn,
+)
 from src.utils.keyboards import product_detail_keyboard, back_to_menu_keyboard, payment_options_keyboard
 from src.services.vietqr import generate_qr_image, get_bank_display_name
 
@@ -291,7 +298,6 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     slot_data = context.user_data.get("slot_purchase", {})
     customer_email = slot_data.get("email", "") if product.get("isSlotProduct") else ""
-    api_qty = 1 if product.get("isSlotProduct") else quantity
     api_months = quantity if product.get("isSlotProduct") else 0
 
     # Create a pending order
@@ -299,7 +305,7 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id=db_user["id"],
         product_id=product_id,
         product_name=product.get("product_name", ""),
-        quantity=api_qty,
+        quantity=quantity,
         original_price=product.get("walletPricing", 0),
         sell_price=sell_price,
         order_code="",
@@ -432,6 +438,12 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     user = await db.get_user(telegram_id)
+    is_slot_product = bool(product.get("isSlotProduct"))
+    slot_data = context.user_data.get("slot_purchase", {})
+    customer_email = slot_data.get("email", "") if is_slot_product else ""
+    api_qty = 1 if is_slot_product else quantity
+    api_months = quantity if is_slot_product else 0
+
     try:
         order = await db.create_order(
             user_id=user["id"],
@@ -443,6 +455,8 @@ async def _do_execute_purchase(update, context, query, telegram_id):
             sell_price=sell_price,
             delivered_data=[],
             status="pending",
+            customer_email=customer_email,
+            slot_months=api_months,
         )
     except Exception:
         refund_balance = await db.update_balance(telegram_id, total)
@@ -465,11 +479,6 @@ async def _do_execute_purchase(update, context, query, telegram_id):
         return
 
     try:
-        slot_data = context.user_data.get("slot_purchase", {})
-        customer_email = slot_data.get("email", "") if product.get("isSlotProduct") else ""
-        api_qty = 1 if product.get("isSlotProduct") else quantity
-        api_months = quantity if product.get("isSlotProduct") else 0
-
         result = await canboso.purchase(
             product_id=product_id,
             quantity=api_qty,
@@ -534,32 +543,24 @@ async def _do_execute_purchase(update, context, query, telegram_id):
     # await process_referral_bonus(db, context.application, order["id"], user["id"], total)
 
     # === SEND RESULT — use send_message (same as QR flow which works) ===
-    accounts_text = format_account_list(delivered, lang)
     canboso_msg = result.get("message", "")
     
-    # If it's a Slot product (no delivered accounts), generate the professional instruction manually
-    if not delivered and product.get("isSlotProduct"):
-        customer_email = context.user_data.get("slot_purchase", {}).get("email", "")
+    if is_slot_product:
         order_code_display = result.get("orderCode") or f"ORD{order['id']}"
-        platform = "OpenAI" if "chatgpt" in product.get("product_name", "").lower() else "nhà cung cấp"
-        
-        slot_msg = (
-            f"Đã nhận thanh toán cho đơn {order_code_display}. Đã mời <b>{customer_email}</b> vào workspace.\n\n"
-            f"⚠️ <b>Lưu ý:</b> Không được thêm email khác vào workspace. Nếu phát hiện vi phạm, "
-            f"hệ thống sẽ kick người được mời thêm và kick người mời, đồng thời không hoàn tiền.\n\n"
-            f"<b>Hướng dẫn nhận slot:</b>\n"
-            f"1) Khách hàng kiểm tra email.\n"
-            f"2) Tìm email từ {platform}.\n"
-            f"3) Nhấn \"Join workspace\".\n"
-            f"4) Đăng nhập để vào workspace."
+        accounts_text, slot_msg = format_slot_delivery(
+            product.get("product_name", ""),
+            order_code_display,
+            customer_email,
+            lang,
         )
-        accounts_text = f"📝 <b>Thông tin & Hướng dẫn:</b>\n{slot_msg}"
-        await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Hướng dẫn Slot": slot_msg}])
+        await db.update_order(
+            order["id"],
+            status="completed",
+            order_code=result.get("orderCode", ""),
+            delivered_data=[{"Hướng dẫn Slot": slot_msg}],
+        )
     else:
-        accounts_wrapper = f"🔐 <b>TÀI KHOẢN CỦA BẠN:</b>\n━━━━━━━━━━━━━━━━━━\n{accounts_text}\n━━━━━━━━━━━━━━━━━━"
-        if canboso_msg and canboso_msg != "Mua hàng thành công":
-            accounts_wrapper += f"\n\n📝 <b>Thông báo từ hệ thống:</b>\n{esc(canboso_msg)}"
-        accounts_text = accounts_wrapper
+        accounts_text = format_account_delivery(delivered, lang, canboso_msg)
 
         if not delivered and canboso_msg and canboso_msg != "Mua hàng thành công":
             await db.update_order(order["id"], status="completed", order_code=result.get("orderCode", ""), delivered_data=[{"Thông báo": canboso_msg}])
@@ -1116,4 +1117,3 @@ async def _notify_admin_custom_order(context, user, product, quantity, total, or
         await context.bot.send_message(chat_id=config.admin_chat_id, text=admin_msg, parse_mode="HTML")
     except Exception:
         pass
-

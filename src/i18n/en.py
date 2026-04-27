@@ -48,7 +48,6 @@ EN = {
         "💰 Paid: {total}"
     ),
     "account_info": (
-        "━━━━━━━━━━━━━━━\n"
         "👤 User: <code>{user}</code>\n"
         "🔑 Pass: <code>{password}</code>\n"
         "📧 Verify: <code>{verify_email}</code>\n"
