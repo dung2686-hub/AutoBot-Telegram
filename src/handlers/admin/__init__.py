@@ -21,7 +21,7 @@ from .states import (
 )
 from .dashboard import admin_command, admin_refresh
 from .backup import backup_command
-from .users import checkuser_command, checkuser_receive_id, quickcredit_start, quickcredit_execute, credit_start, credit_execute, viewuser_callback
+from .users import checkuser_command, checkuser_receive_id, quickcredit_start, quickcredit_execute, credit_start, credit_execute, viewuser_callback, order_lookup as order_lookup
 from .broadcast import broadcast_start, broadcast_send
 from .markup import markup_menu, markup_prompt, markup_set, markup_toggle, note_edit_prompt, note_save
 from .products import (
