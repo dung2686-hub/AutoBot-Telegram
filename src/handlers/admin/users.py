@@ -177,6 +177,18 @@ async def quickcredit_execute(update: Update, context: ContextTypes.DEFAULT_TYPE
     action = "trừ" if is_debit else "cộng"
     new_balance = await db.update_balance(target_id, actual_amount)
 
+    if is_debit and new_balance == -1:
+        await update.message.reply_text(
+            f"❌ User <code>{target_id}</code> không đủ số dư để trừ <b>{format_vnd(amount)}</b>.\n"
+            f"💰 Số dư hiện tại: <b>{format_vnd(user.get('balance', 0))}</b>",
+            reply_markup=admin_keyboard(),
+            parse_mode="HTML",
+        )
+        context.user_data.pop("quickcredit_target", None)
+        context.user_data.pop("quickcredit_debit", None)
+        context.user_data.pop("active_conv", None)
+        return ConversationHandler.END
+
     tx_type = "admin_debit" if is_debit else "admin_credit"
     await db.add_transaction(
         user_id=user["id"], tx_type=tx_type, amount=actual_amount,
@@ -284,7 +296,7 @@ async def order_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     if user:
         keyboard.append([
-            InlineKeyboardButton("👤 Xem user", callback_data=f"admin:quickcredit:{user['telegram_id']}"),
+            InlineKeyboardButton("👤 Xem user", callback_data=f"admin:viewuser:{user['telegram_id']}"),
         ])
 
     await update.message.reply_text(
@@ -292,6 +304,78 @@ async def order_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
         parse_mode="HTML",
     )
+
+
+@error_handler
+@ensure_user
+@admin_only
+async def viewuser_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback handler for 'Xem user' button — shows user info via send_message."""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split(":")
+    target_id = int(parts[2])
+
+    db = context.bot_data["db"]
+    user = await db.get_user(target_id)
+    if not user:
+        await query.message.reply_text(
+            f"❌ Không tìm thấy user với Telegram ID <code>{target_id}</code>.",
+            parse_mode="HTML",
+        )
+        return
+
+    username = user.get("username", "") or "N/A"
+    full_name = esc(user.get("full_name", "") or "N/A")
+    balance = user.get("balance", 0)
+    lang = user.get("language", "vi")
+    created = format_date(user.get("created_at", ""))
+    referred_by = user.get("referred_by", None)
+
+    text = (
+        f"👤 <b>THÔNG TIN USER</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Telegram ID: <code>{target_id}</code>\n"
+        f"📛 Tên: <b>{full_name}</b>\n"
+        f"🔗 Username: @{username}\n"
+        f"💰 Số dư ví: <b>{format_vnd(balance)}</b>\n"
+        f"🌐 Ngôn ngữ: {lang}\n"
+        f"📅 Tham gia: {created}\n"
+    )
+    if referred_by:
+        text += f"🤝 Giới thiệu bởi: user_id #{referred_by}\n"
+
+    txns = await db.get_user_transactions(user["id"], limit=5)
+    if txns:
+        text += "\n📜 <b>5 giao dịch gần nhất:</b>\n"
+        for tx in txns:
+            tx_amount = tx["amount"]
+            sign = "+" if tx_amount > 0 else ""
+            text += f"  • {tx['type']}: {sign}{format_vnd(tx_amount)} | {esc(tx.get('description', ''))} | {format_date(tx.get('created_at', ''))}\n"
+
+    deposits = await db.get_user_deposits(user["id"], limit=5)
+    if deposits:
+        text += "\n💳 <b>5 lệnh nạp gần nhất:</b>\n"
+        for d in deposits:
+            status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(d["status"], "❓")
+            text += f"  • NAP{d['id']} | {format_vnd(d['amount'])} | {status_icon} {d['status']} | {format_date(d.get('created_at', ''))}\n"
+
+    orders = await db.get_user_orders(user["id"], limit=5)
+    if orders:
+        text += "\n🛒 <b>5 đơn hàng gần nhất:</b>\n"
+        for o in orders:
+            status_icon = {"completed": "✅", "pending": "⏳", "expired": "⏱", "failed": "❌"}.get(o["status"], "❓")
+            text += f"  • MUA{o['id']} | {esc(o.get('product_name', 'N/A'))} | {format_vnd(o['total_amount'])} | {status_icon} {o['status']}\n"
+
+    keyboard = [
+        [
+            InlineKeyboardButton("💳 Cộng tiền", callback_data=f"admin:quickcredit:{target_id}"),
+            InlineKeyboardButton("➖ Trừ tiền", callback_data=f"admin:quickdebit:{target_id}"),
+        ],
+        [InlineKeyboardButton("⬅️ Admin Panel", callback_data="admin:refresh")],
+    ]
+    await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 @error_handler

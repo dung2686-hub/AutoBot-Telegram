@@ -3,7 +3,7 @@ from telegram.ext import ConversationHandler, CommandHandler, CallbackQueryHandl
 from .states import *
 from .dashboard import admin_command, admin_refresh
 from .backup import backup_command
-from .users import checkuser_command, checkuser_receive_id, quickcredit_start, quickcredit_execute, credit_start, credit_execute, order_lookup
+from .users import checkuser_command, checkuser_receive_id, quickcredit_start, quickcredit_execute, credit_start, credit_execute, order_lookup, viewuser_callback
 from .broadcast import broadcast_start, broadcast_send
 from .markup import markup_menu, markup_prompt, markup_set, markup_toggle, note_edit_prompt, note_save
 from .products import (
@@ -29,6 +29,7 @@ def get_admin_conversation() -> ConversationHandler:
             CallbackQueryHandler(custom_add_start, pattern=r"^admin:custom_add$"),
             CallbackQueryHandler(custom_edit_menu, pattern=r"^admin:custom_edit:\d+$"),
             CallbackQueryHandler(custom_delete, pattern=r"^admin:custom_del:\d+$"),
+            CallbackQueryHandler(viewuser_callback, pattern=r"^admin:viewuser:\d+$"),
             CallbackQueryHandler(admin_refresh, pattern=r"^admin:refresh$"),
         ],
         states={

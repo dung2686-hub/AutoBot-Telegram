@@ -280,6 +280,15 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sell_price = await calc_sell_price(db, product_id, product.get("walletPricing", 0))
     total = sell_price * quantity
 
+    # Validate bank config BEFORE creating order to avoid orphan pending orders
+    if not config.bank_bin or not config.bank_account:
+        await query.edit_message_text(
+            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
+            reply_markup=back_to_menu_keyboard(lang),
+            parse_mode="HTML",
+        )
+        return
+
     # Create a pending order
     order = await db.create_order(
         user_id=db_user["id"],
@@ -296,17 +305,18 @@ async def qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = order["id"]
     order_code_mem = f"MUA{order_id}"
 
-    # Validate bank config
-    if not config.bank_bin or not config.bank_account:
+    # Generate QR with 3-tier fallback
+    try:
+        qr_bytes = await generate_qr_image(total, order_code_mem)
+    except Exception:
+        logger.exception("[QR-PAY] Failed to generate QR for order %s", order_id)
+        await db.update_order(order_id, status="failed")
         await query.edit_message_text(
-            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
-            reply_markup=back_to_menu_keyboard(lang),
-            parse_mode="HTML",
+            "❌ Lỗi tạo mã QR. Vui lòng thử lại sau.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
         )
         return
 
-    # Generate QR with 3-tier fallback
-    qr_bytes = await generate_qr_image(total, order_code_mem)
     bank_display = get_bank_display_name(config.bank_bin)
 
     msg_text = (
@@ -848,6 +858,14 @@ async def custom_qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE
     price = product["price"]
     total = price * quantity
 
+    # Validate bank config BEFORE creating order to avoid orphan pending orders
+    if not config.bank_bin or not config.bank_account:
+        await query.edit_message_text(
+            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
+            reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
+        )
+        return
+
     # Create pending order
     order = await db.create_order(
         user_id=db_user["id"],
@@ -864,16 +882,18 @@ async def custom_qr_pay_setup(update: Update, context: ContextTypes.DEFAULT_TYPE
     order_id = order["id"]
     order_code_mem = f"MUA{order_id}"
 
-    # Validate bank config
-    if not config.bank_bin or not config.bank_account:
+    # Generate QR
+    try:
+        qr_bytes = await generate_qr_image(total, order_code_mem)
+    except Exception:
+        logger.exception("[QR-PAY] Failed to generate QR for custom order %s", order_id)
+        await db.update_order(order_id, status="failed")
         await query.edit_message_text(
-            "⚠️ Admin chưa cấu hình thanh toán ngân hàng. Vui lòng nạp ví trước.",
+            "❌ Lỗi tạo mã QR. Vui lòng thử lại sau.",
             reply_markup=back_to_menu_keyboard(lang), parse_mode="HTML",
         )
         return
 
-    # Generate QR
-    qr_bytes = await generate_qr_image(total, order_code_mem)
     bank_display = get_bank_display_name(config.bank_bin)
 
     msg_text = (
