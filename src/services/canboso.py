@@ -112,13 +112,15 @@ class CanbosoClient:
             if resp.status_code == 200:
                 return {"success": True, **data}
 
-            error_map = {
-                400: "Insufficient Canboso balance",
+            fallback_map = {
+                400: "Bad request",
                 401: "Invalid API key",
                 404: "Product not found",
                 409: "Out of stock",
             }
-            msg = error_map.get(resp.status_code, data.get("message", "Unknown error"))
+            api_msg = data.get("message") or data.get("error")
+            msg = api_msg or fallback_map.get(resp.status_code, f"HTTP {resp.status_code}")
+            logger.warning("Canboso purchase failed [%d]: %s | body: %s", resp.status_code, msg, data)
             return {"success": False, "message": msg, "status_code": resp.status_code}
 
         except httpx.HTTPError as e:
