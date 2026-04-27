@@ -11,7 +11,7 @@ from src.utils.keyboards import back_to_menu_keyboard, pagination_keyboard
 
 logger = logging.getLogger(__name__)
 
-ITEMS_PER_PAGE = 5
+ITEMS_PER_PAGE = 10
 
 
 @error_handler
