@@ -1,7 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from src.handlers.shop import calc_min_sell, calc_sell_price, get_tier_markup
-from src.config import config
 from src.utils.decorators import ensure_user, admin_only, error_handler
 from src.utils.formatters import format_vnd, esc
 from src.utils.keyboards import admin_keyboard
@@ -22,7 +21,7 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup_map = {m["product_id"]: m for m in markups}
 
     text = "💰 <b>Markup Settings</b>\n\n"
-    text += "Bậc thang: &lt;100k (30%), ≥100k (25%)\n"
+    text += "Markup tối thiểu: 30% (mọi mức giá)\n"
     text += "━━━━━━━━━━━━━━━━━━\n"
 
     keyboard = []

@@ -21,16 +21,14 @@ from src.services.vietqr import generate_qr_image, get_bank_display_name
 logger = logging.getLogger(__name__)
 
 
-def _round_up_1000(price: int) -> int:
-    """Làm tròn lên bội số 1000đ gần nhất. VD: 54200 → 55000."""
-    return int(math.ceil(price / 1000) * 1000)
+def _round_up_10000(price: int) -> int:
+    """Làm tròn lên bội số 10.000đ gần nhất. VD: 132000 → 140000."""
+    return int(math.ceil(price / 10000) * 10000)
 
 
 def get_tier_markup(cost_price: int) -> int:
-    """Xác định tỷ lệ markup % dựa trên giá vốn."""
-    if cost_price < 100000:
-        return 30
-    return 25
+    """Tỷ lệ markup % tối thiểu."""
+    return 30
 
 
 def calc_min_sell(cost_price: int) -> int:
@@ -54,9 +52,9 @@ async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
     if m["fixed_price"] > 0:
         sell = max(m["fixed_price"], min_sell)
         if sell == min_sell:
-            return _round_up_1000(sell)
+            return _round_up_10000(sell)
         return sell
-    return _round_up_1000(markup_price)
+    return _round_up_10000(markup_price)
 
 
 @error_handler
