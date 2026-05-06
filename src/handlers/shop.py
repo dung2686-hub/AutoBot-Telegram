@@ -51,9 +51,7 @@ async def calc_sell_price(db, product_id: str, cost_price: int) -> int:
 
     if m["fixed_price"] > 0:
         sell = max(m["fixed_price"], min_sell)
-        if sell == min_sell:
-            return _round_up_10000(sell)
-        return sell
+        return _round_up_10000(sell)
     return _round_up_10000(markup_price)
 
 

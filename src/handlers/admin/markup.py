@@ -44,7 +44,8 @@ async def markup_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         calc_sell = max(calc_sell, min_sell)
 
         if fixed and fixed > 0:
-            sell = max(fixed, min_sell)
+            from src.handlers.shop import _round_up_10000
+            sell = _round_up_10000(max(fixed, min_sell))
             mode = "Cố định"
         else:
             sell = calc_sell
